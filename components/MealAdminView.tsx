@@ -394,6 +394,7 @@ export default function MealAdminView() {
       }
 
       addFoodToCell(foodId, day, time);
+      setSelectedChosung('전체');
     }
   };
 
@@ -837,7 +838,10 @@ export default function MealAdminView() {
               placeholder="음식 이름 검색..." 
               className="w-full text-sm border border-gray-300 rounded p-1.5 focus:ring-1 focus:ring-blue-500 focus:outline-none"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                if (e.target.value) setSelectedChosung('전체');
+              }}
             />
           </div>
           <div className="flex flex-wrap gap-1 mb-1 items-center">
@@ -1248,6 +1252,8 @@ export default function MealAdminView() {
                       }
                     }
                     setIsFoodModalOpen(false);
+                    setSelectedChosung('전체');
+                    setSearchQuery('');
                   }} 
                   className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-bold"
                 >
