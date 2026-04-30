@@ -721,13 +721,15 @@ export default function MealAdminView() {
         </div>
 
         {/* A4 Canvas (데스크탑 전용) */}
-        <div className="hidden md:block">
-        <div 
-          ref={canvasRef}
-          className="bg-white shadow-lg relative p-6"
-          style={{ 
-            width: '210mm', 
-            minHeight: '297mm',
+        <div className="hidden md:block w-full overflow-x-auto pb-8">
+          <div className="flex justify-center min-w-max px-4">
+            <div 
+              ref={canvasRef}
+              className="bg-white shadow-lg relative p-6 shrink-0 mx-auto"
+              style={{ 
+                width: '210mm', 
+                minWidth: '210mm',
+                minHeight: '297mm',
             backgroundColor: settings.backgroundColor,
             backgroundImage: settings.backgroundImageUrl ? `url(${settings.backgroundImageUrl})` : 'none',
             backgroundSize: 'cover',
