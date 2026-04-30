@@ -63,6 +63,8 @@ export default function MealAdminView() {
   const [history, setHistory] = useState<any[]>([]);
   const [isLunchModalOpen, setIsLunchModalOpen] = useState(false);
   const [isMobileFoodPanelOpen, setIsMobileFoodPanelOpen] = useState(false);
+  const [isKimchiModalOpen, setIsKimchiModalOpen] = useState(false);
+  const [pendingKimchiDrop, setPendingKimchiDrop] = useState<{foodId: string; day: DayOfWeek; time: MealTime} | null>(null);
 
   const canvasRef = useRef<HTMLDivElement>(null);
 
@@ -299,33 +301,69 @@ export default function MealAdminView() {
     setActiveId(event.active.id as string);
   };
 
+  // 배추김치 일괄 적용 처리
+  const applyKimchiToAll = (foodId: string) => {
+    setMenus((prev) => {
+      const newMenus = [...prev];
+      const ALL_DAYS: DayOfWeek[] = ['월', '화', '수', '목', '금', '토', '일'];
+      const ALL_TIMES: MealTime[] = ['아침', '점심', '저녁'];
+
+      ALL_DAYS.forEach(d => {
+        ALL_TIMES.forEach(t => {
+          const idx = newMenus.findIndex(m => m.day === d && m.time === t);
+          if (idx >= 0) {
+            if (!newMenus[idx].foodIds.includes(foodId)) {
+              newMenus[idx] = { ...newMenus[idx], foodIds: [...newMenus[idx].foodIds, foodId] };
+            }
+          } else {
+            newMenus.push({ id: Date.now().toString() + d + t, day: d, time: t, foodIds: [foodId] });
+          }
+        });
+      });
+      return newMenus;
+    });
+  };
+
+  const addFoodToCell = (foodId: string, day: DayOfWeek, time: MealTime) => {
+    setMenus((prev) => {
+      const existingEntryIndex = prev.findIndex(m => m.day === day && m.time === time);
+      if (existingEntryIndex >= 0) {
+        const newMenus = [...prev];
+        const currentFoods = newMenus[existingEntryIndex].foodIds;
+        if (!currentFoods.includes(foodId)) {
+          newMenus[existingEntryIndex] = {
+            ...newMenus[existingEntryIndex],
+            foodIds: [...currentFoods, foodId]
+          };
+        }
+        return newMenus;
+      } else {
+        return [...prev, { id: Date.now().toString(), day, time, foodIds: [foodId] }];
+      }
+    });
+  };
+
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveId(null);
 
     if (over) {
       const foodId = active.id as string;
+      const food = foodDb.find(f => f.id === foodId);
       // over.id format: "day-time" (e.g., "월-아침")
       const [day, time] = (over.id as string).split('-') as [DayOfWeek, MealTime];
 
-      setMenus((prev) => {
-        const existingEntryIndex = prev.findIndex(m => m.day === day && m.time === time);
-        if (existingEntryIndex >= 0) {
-          const newMenus = [...prev];
-          const currentFoods = newMenus[existingEntryIndex].foodIds;
-          if (!currentFoods.includes(foodId)) {
-            newMenus[existingEntryIndex] = {
-              ...newMenus[existingEntryIndex],
-              foodIds: [...currentFoods, foodId]
-            };
-          }
-          return newMenus;
-        } else {
-          return [...prev, { id: Date.now().toString(), day, time, foodIds: [foodId] }];
-        }
-      });
+      // 배추김치 특별 처리 - 커스텀 모달로 확인
+      if (food && food.name === '배추김치') {
+        setPendingKimchiDrop({ foodId, day, time });
+        setIsKimchiModalOpen(true);
+        return;
+      }
+
+      addFoodToCell(foodId, day, time);
     }
   };
+
 
   const removeFood = (day: DayOfWeek, time: MealTime, foodId: string) => {
     setMenus((prev) => {
@@ -497,7 +535,11 @@ export default function MealAdminView() {
                       <td className="border border-gray-200 p-1 text-center font-bold bg-gray-50 text-[10px]">{time}</td>
                       {DAYS.map(day => {
                         const menuEntry = menus.find(m => m.day === day && m.time === time);
-                        const foods = menuEntry ? menuEntry.foodIds.map(id => foodDb.find(f => f.id === id)!) : [];
+                        const rawFoods = menuEntry ? menuEntry.foodIds.map(id => foodDb.find(f => f.id === id)!).filter(Boolean) : [];
+                        const foods = [
+                          ...rawFoods.filter(f => f && f.name !== '배추김치'),
+                          ...rawFoods.filter(f => f && f.name === '배추김치')
+                        ];
                         return (
                           <td key={`m-${day}-${time}`} className="border border-gray-200 p-1 align-top h-[80px] w-[12%]">
                             <DroppableCell id={`${day}-${time}`}>
@@ -606,7 +648,11 @@ export default function MealAdminView() {
                     </td>
                     {DAYS.map(day => {
                       const menuEntry = menus.find(m => m.day === day && m.time === time);
-                      const foods = menuEntry ? menuEntry.foodIds.map(id => foodDb.find(f => f.id === id)!) : [];
+                      const rawFoods = menuEntry ? menuEntry.foodIds.map(id => foodDb.find(f => f.id === id)!).filter(Boolean) : [];
+                      const foods = [
+                        ...rawFoods.filter(f => f && f.name !== '배추김치'),
+                        ...rawFoods.filter(f => f && f.name === '배추김치')
+                      ];
                       
                       return (
                         <td key={`${day}-${time}`} className="border border-gray-400 p-0 align-top relative h-[160px] w-[13%]">
@@ -634,9 +680,9 @@ export default function MealAdminView() {
               </tbody>
             </table>
 
-            <div className="mt-8 bg-white bg-opacity-90 p-4 rounded border border-gray-200 flex-1">
+            <div className="mt-6 bg-white bg-opacity-90 p-4 rounded border border-gray-200 flex-1">
               <textarea 
-                className="w-full h-full min-h-[160px] text-xs p-2 border-none resize-none focus:ring-0 bg-transparent"
+                className="w-full h-full min-h-[200px] text-xs p-2 border-none resize-none focus:ring-0 bg-transparent"
                 value={settings.originText}
                 onChange={(e) => setSettings({...settings, originText: e.target.value})}
               />
@@ -665,7 +711,11 @@ export default function MealAdminView() {
             {CATEGORIES.map(cat => (
               <button 
                 key={cat}
-                onClick={() => setActiveTab(cat)}
+                onClick={() => {
+                  setActiveTab(cat);
+                  setSelectedChosung('전체');
+                  setSearchQuery('');
+                }}
                 className={`flex-1 py-1 px-2 rounded text-sm font-medium transition-colors ${activeTab === cat ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
               >
                 {cat}
@@ -961,14 +1011,13 @@ export default function MealAdminView() {
               </button>
               <button 
                 onClick={() => {
-                  setMenus([]);
+                  // setMenus([]) 를 호출하지 않아 기존 메뉴를 유지함
                   setSettings({ ...settings, weekTitle: `${selectedMonth}월 ${selectedWeek}주차 식단표` });
-                  setTodayLunch({ ...todayLunch, imageUrl: '' });
                   setIsWeekModalOpen(false);
                 }} 
                 className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-bold"
               >
-                확인 및 초기화
+                확인 및 내용 유지
               </button>
             </div>
           </div>
@@ -1048,6 +1097,12 @@ export default function MealAdminView() {
                     if (!editingFood.name.trim()) return alert('이름을 입력하세요.');
                     
                     const isEditing = foodDb.some(f => f.id === editingFood.id);
+                    
+                    // 중복 체크 (이름 기준)
+                    const isDuplicate = foodDb.some(f => f.name.trim() === editingFood.name.trim() && f.id !== editingFood.id);
+                    if (isDuplicate) {
+                      return alert(`'${editingFood.name}'은(는) 이미 데이터베이스에 존재하는 음식입니다.`);
+                    }
                     
                     if (isEditing) {
                       const { error } = await supabase
@@ -1139,6 +1194,59 @@ export default function MealAdminView() {
                 className="px-6 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 font-bold"
               >
                 확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 배추김치 일괄 적용 모달 */}
+      {isKimchiModalOpen && pendingKimchiDrop && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-xl shadow-2xl w-[420px] max-w-[90vw] overflow-hidden">
+            <div className="bg-gradient-to-r from-green-500 to-green-600 p-5 text-center">
+              <div className="text-4xl mb-2">🥬</div>
+              <h2 className="text-xl font-bold text-white">배추김치 일괄 적용</h2>
+            </div>
+            <div className="p-6">
+              <p className="text-gray-700 text-center mb-6 leading-relaxed">
+                모든 식단 <span className="font-bold text-green-600">(월~일 아침/점심/저녁)</span>에<br/>
+                배추김치를 한 번에 적용하시겠습니까?
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    if (pendingKimchiDrop) {
+                      addFoodToCell(pendingKimchiDrop.foodId, pendingKimchiDrop.day, pendingKimchiDrop.time);
+                    }
+                    setIsKimchiModalOpen(false);
+                    setPendingKimchiDrop(null);
+                  }}
+                  className="flex-1 py-3 bg-gray-200 text-gray-700 rounded-lg font-bold hover:bg-gray-300 transition-colors"
+                >
+                  이 칸에만 적용
+                </button>
+                <button
+                  onClick={() => {
+                    if (pendingKimchiDrop) {
+                      applyKimchiToAll(pendingKimchiDrop.foodId);
+                    }
+                    setIsKimchiModalOpen(false);
+                    setPendingKimchiDrop(null);
+                  }}
+                  className="flex-1 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg font-bold hover:from-green-600 hover:to-green-700 transition-all shadow-md"
+                >
+                  ✅ 전체 일괄 적용
+                </button>
+              </div>
+              <button
+                onClick={() => {
+                  setIsKimchiModalOpen(false);
+                  setPendingKimchiDrop(null);
+                }}
+                className="w-full mt-3 py-2 text-gray-400 hover:text-gray-600 text-sm transition-colors"
+              >
+                취소
               </button>
             </div>
           </div>

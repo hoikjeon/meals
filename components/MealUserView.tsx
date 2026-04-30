@@ -318,7 +318,11 @@ export default function MealUserView() {
               {TIMES.map(time => {
                 const day = DAYS[selectedDayIndex];
                 const menuEntry = menus.find(m => m.day === day && m.time === time);
-                const foods = menuEntry ? menuEntry.foodIds.map(id => foodDb.find(f => f.id === id)!).filter(Boolean) : [];
+                const rawFoods = menuEntry ? menuEntry.foodIds.map(id => foodDb.find(f => f.id === id)!).filter(Boolean) : [];
+                const foods = [
+                  ...rawFoods.filter(f => f.name !== '배추김치'),
+                  ...rawFoods.filter(f => f.name === '배추김치')
+                ];
                 return (
                   <div key={time} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                     <div className={`px-4 py-2 flex items-center gap-2 font-bold text-sm ${
@@ -376,7 +380,11 @@ export default function MealUserView() {
                         <td className="border border-gray-200 p-1.5 text-center font-semibold bg-gray-50 text-gray-700 text-xs">{time}</td>
                         {DAYS.map(day => {
                           const menuEntry = menus.find(m => m.day === day && m.time === time);
-                          const foods = menuEntry ? menuEntry.foodIds.map(id => foodDb.find(f => f.id === id)!).filter(Boolean) : [];
+                          const rawFoods = menuEntry ? menuEntry.foodIds.map(id => foodDb.find(f => f.id === id)!).filter(Boolean) : [];
+                          const foods = [
+                            ...rawFoods.filter(f => f.name !== '배추김치'),
+                            ...rawFoods.filter(f => f.name === '배추김치')
+                          ];
                           return (
                             <td key={`${day}-${time}`} className="border border-gray-200 p-1 text-center align-top h-[120px]">
                               <div className="min-h-[120px] flex flex-col gap-1 items-center justify-start">
@@ -424,7 +432,11 @@ export default function MealUserView() {
                       <td className="border border-gray-200 p-2 text-center font-semibold bg-gray-50 text-gray-700">{time}</td>
                       {DAYS.map(day => {
                         const menuEntry = menus.find(m => m.day === day && m.time === time);
-                        const foods = menuEntry ? menuEntry.foodIds.map(id => foodDb.find(f => f.id === id)!).filter(Boolean) : [];
+                        const rawFoods = menuEntry ? menuEntry.foodIds.map(id => foodDb.find(f => f.id === id)!).filter(Boolean) : [];
+                        const foods = [
+                          ...rawFoods.filter(f => f.name !== '배추김치'),
+                          ...rawFoods.filter(f => f.name === '배추김치')
+                        ];
                         return (
                           <td key={`${day}-${time}`} className="border border-gray-200 p-0 text-center align-top h-[160px] w-[13%]">
                             <div className="min-h-[160px] h-full p-2 flex flex-col gap-2 items-center justify-start">
@@ -534,7 +546,11 @@ export default function MealUserView() {
                     </td>
                     {DAYS.map(day => {
                       const menuEntry = menus.find(m => m.day === day && m.time === time);
-                      const foods = menuEntry ? menuEntry.foodIds.map(id => foodDb.find(f => f.id === id)!).filter(Boolean) : [];
+                      const rawFoods = menuEntry ? menuEntry.foodIds.map(id => foodDb.find(f => f.id === id)!).filter(Boolean) : [];
+                      const foods = [
+                        ...rawFoods.filter(f => f.name !== '배추김치'),
+                        ...rawFoods.filter(f => f.name === '배추김치')
+                      ];
                       
                       return (
                         <td key={`${day}-${time}`} className="border border-gray-400 p-0 align-top relative h-[160px] w-[13%]">
@@ -554,8 +570,8 @@ export default function MealUserView() {
               </tbody>
             </table>
 
-            <div className="mt-8 bg-white bg-opacity-90 p-4 rounded border border-gray-200 flex-1">
-              <div className="w-full h-full min-h-[160px] text-xs p-2 whitespace-pre-wrap text-gray-800">
+            <div className="mt-6 bg-white bg-opacity-90 p-4 rounded border border-gray-200 flex-1">
+              <div className="w-full h-full min-h-[200px] text-xs p-2 whitespace-pre-wrap text-gray-800">
                 {settings.originText}
               </div>
             </div>
