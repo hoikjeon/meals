@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from 'react';
-import { DndContext, DragEndEvent, DragOverlay, useSensor, useSensors, PointerSensor, DragStartEvent, closestCenter } from '@dnd-kit/core';
+import { DndContext, DragEndEvent, DragOverlay, useSensor, useSensors, PointerSensor, DragStartEvent, closestCenter, useDraggable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { dummyFoodItems, dummyWeeklyMenus, dummySettings, dummyTodayLunch } from '@/lib/dummyData';
@@ -431,21 +431,38 @@ export default function MealAdminView() {
     setActiveId(null);
 
     if (over) {
-      const foodId = active.id as string;
+      const isFromGrid = active.data.current?.source === 'grid';
+      const foodId = isFromGrid ? active.data.current?.foodId : (active.id as string);
       const food = foodDb.find(f => f.id === foodId);
-      // over.id format: "desktop-day-time" or "mobile-day-time"
+      
       const parts = (over.id as string).split('-');
-      const day = parts[1] as DayOfWeek;
-      const time = parts[2] as MealTime;
+      const targetDay = parts[1] as DayOfWeek;
+      const targetTime = parts[2] as MealTime;
 
-      // 배추김치 특별 처리 - 커스텀 모달로 확인
+      // 그리드 내에서 이동하는 경우
+      if (isFromGrid) {
+        const sourceDay = active.data.current?.day as DayOfWeek;
+        const sourceTime = active.data.current?.time as MealTime;
+        
+        // 같은 칸 안에서 드롭한 경우 무시
+        if (sourceDay === targetDay && sourceTime === targetTime) {
+          return;
+        }
+        
+        // 기존 칸에서 삭제 후 새 칸에 추가
+        removeFood(sourceDay, sourceTime, foodId);
+        addFoodToCell(foodId, targetDay, targetTime);
+        return;
+      }
+
+      // 배추김치 특별 처리 - 커스텀 모달로 확인 (사이드바에서 올 때만)
       if (food && food.name === '배추김치') {
-        setPendingKimchiDrop({ foodId, day, time });
+        setPendingKimchiDrop({ foodId, day: targetDay, time: targetTime });
         setIsKimchiModalOpen(true);
         return;
       }
 
-      addFoodToCell(foodId, day, time);
+      addFoodToCell(foodId, targetDay, targetTime);
       setSelectedChosung('전체');
       setSearchQuery('');
     }
@@ -583,7 +600,11 @@ export default function MealAdminView() {
     }
   };
 
-  const activeFoodItem = foodDb.find(f => f.id === activeId);
+  const activeFoodItem = activeId 
+    ? (activeId.startsWith('grid-') 
+        ? foodDb.find(f => f.id === activeId.split('-')[activeId.split('-').length - 2])
+        : foodDb.find(f => f.id === activeId))
+    : undefined;
 
   const handleToggleFavorite = async (food: FoodItem) => {
     const currentFavs = settings.favoriteFoodIds || [];
@@ -707,17 +728,17 @@ export default function MealAdminView() {
                             <DroppableCell id={`mobile-${day}-${time}`}>
                               <div className="min-h-[70px] flex flex-col gap-1 items-center">
                                 {foods.map((food, idx) => food && (
-                                  <div key={food.id} className="text-[9px] text-center relative group w-full flex items-center justify-center gap-0.5 hover:bg-orange-50 hover:ring-1 hover:ring-orange-200 rounded py-0.5 transition-all cursor-pointer">
-                                    <div className="flex flex-col">
-                                      {idx > 0 && <button onClick={(e) => { e.stopPropagation(); moveFood(day, time, food.id, 'up'); }} className="text-[7px] leading-none text-blue-400 hover:text-blue-600">▲</button>}
-                                      {idx < foods.length - 1 && <button onClick={(e) => { e.stopPropagation(); moveFood(day, time, food.id, 'down'); }} className="text-[7px] leading-none text-blue-400 hover:text-blue-600">▼</button>}
-                                    </div>
-                                    <span className="font-bold text-gray-800 leading-tight">{food.name}</span>
-                                    <button 
-                                      onClick={(e) => { e.stopPropagation(); removeFood(day, time, food.id); }}
-                                      className="text-red-400 text-[8px] font-bold"
-                                    >✕</button>
-                                  </div>
+                                  <DraggableGridFoodMobile
+                                    key={food.id}
+                                    food={food}
+                                    day={day}
+                                    time={time}
+                                    idx={idx}
+                                    total={foods.length}
+                                    onRemove={() => removeFood(day, time, food.id)}
+                                    onMoveUp={() => moveFood(day, time, food.id, 'up')}
+                                    onMoveDown={() => moveFood(day, time, food.id, 'down')}
+                                  />
                                 ))}
                               </div>
                             </DroppableCell>
@@ -823,33 +844,17 @@ export default function MealAdminView() {
                           <DroppableCell id={`desktop-${day}-${time}`}>
                             <div className="min-h-[160px] h-full p-2 flex flex-col gap-2 items-center justify-start overflow-hidden">
                               {foods.map((food, idx) => food && (
-                                <div key={food.id} className="text-[11px] text-center relative group w-full flex flex-col items-center hover:bg-orange-50 hover:ring-1 hover:ring-orange-200 rounded p-1 transition-all cursor-pointer">
-                                  <div className="font-bold text-gray-800 leading-tight" style={{ wordBreak: 'keep-all', overflowWrap: 'break-word' }}>{food.name}</div>
-                                  {food.origin && <div className="text-[9px] text-gray-500 leading-tight">({food.origin})</div>}
-                                  
-                                  {/* 순서 변경 및 삭제 버튼 패널 */}
-                                  <div className="absolute -right-1 -top-1 flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 shadow-sm rounded border border-gray-200 p-0.5 z-10">
-                                    <button 
-                                      onClick={(e) => { e.stopPropagation(); removeFood(day, time, food.id); }}
-                                      className="bg-red-500 text-white rounded w-4 h-4 flex items-center justify-center text-[10px]"
-                                      title="삭제"
-                                    >✕</button>
-                                    {idx > 0 && (
-                                      <button 
-                                        onClick={(e) => { e.stopPropagation(); moveFood(day, time, food.id, 'up'); }}
-                                        className="bg-blue-500 text-white rounded w-4 h-4 flex items-center justify-center text-[10px]"
-                                        title="위로"
-                                      >▲</button>
-                                    )}
-                                    {idx < foods.length - 1 && (
-                                      <button 
-                                        onClick={(e) => { e.stopPropagation(); moveFood(day, time, food.id, 'down'); }}
-                                        className="bg-blue-500 text-white rounded w-4 h-4 flex items-center justify-center text-[10px]"
-                                        title="아래로"
-                                      >▼</button>
-                                    )}
-                                  </div>
-                                </div>
+                                <DraggableGridFood 
+                                  key={food.id}
+                                  food={food}
+                                  day={day}
+                                  time={time}
+                                  idx={idx}
+                                  total={foods.length}
+                                  onRemove={() => removeFood(day, time, food.id)}
+                                  onMoveUp={() => moveFood(day, time, food.id, 'up')}
+                                  onMoveDown={() => moveFood(day, time, food.id, 'down')}
+                                />
                               ))}
                             </div>
                           </DroppableCell>
@@ -1591,3 +1596,94 @@ function SortableHistoryItem({ h, onUpdate, onDelete }: { h: any, onUpdate: (h: 
   );
 }
 
+function DraggableGridFood({ 
+  food, day, time, idx, total, onRemove, onMoveUp, onMoveDown 
+}: { 
+  food: any, day: string, time: string, idx: number, total: number,
+  onRemove: () => void, onMoveUp: () => void, onMoveDown: () => void 
+}) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: `grid-${day}-${time}-${food.id}-${idx}`,
+    data: { source: 'grid', day, time, foodId: food.id, idx }
+  });
+  
+  const style = transform ? {
+    transform: CSS.Translate.toString(transform),
+    zIndex: isDragging ? 100 : 0,
+    opacity: isDragging ? 0.5 : 1,
+  } : undefined;
+
+  return (
+    <div 
+      ref={setNodeRef}
+      style={style}
+      {...listeners}
+      {...attributes}
+      className={`text-[11px] text-center relative group w-full flex flex-col items-center hover:bg-orange-50 hover:ring-1 hover:ring-orange-200 rounded p-1 transition-all cursor-grab active:cursor-grabbing ${isDragging ? 'z-50 opacity-50 shadow-lg' : ''}`}
+    >
+      <div className="font-bold text-gray-800 leading-tight" style={{ wordBreak: 'keep-all', overflowWrap: 'break-word' }}>{food.name}</div>
+      {food.origin && <div className="text-[9px] text-gray-500 leading-tight">({food.origin})</div>}
+      
+      {/* 순서 변경 및 삭제 버튼 패널 */}
+      <div className="absolute -right-1 -top-1 flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 shadow-sm rounded border border-gray-200 p-0.5 z-10">
+        <button 
+          onPointerDown={(e) => { e.stopPropagation(); onRemove(); }}
+          className="bg-red-500 text-white rounded w-4 h-4 flex items-center justify-center text-[10px]"
+          title="삭제"
+        >✕</button>
+        {idx > 0 && (
+          <button 
+            onPointerDown={(e) => { e.stopPropagation(); onMoveUp(); }}
+            className="bg-blue-500 text-white rounded w-4 h-4 flex items-center justify-center text-[10px]"
+            title="위로"
+          >▲</button>
+        )}
+        {idx < total - 1 && (
+          <button 
+            onPointerDown={(e) => { e.stopPropagation(); onMoveDown(); }}
+            className="bg-blue-500 text-white rounded w-4 h-4 flex items-center justify-center text-[10px]"
+            title="아래로"
+          >▼</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DraggableGridFoodMobile({ 
+  food, day, time, idx, total, onRemove, onMoveUp, onMoveDown 
+}: { 
+  food: any, day: string, time: string, idx: number, total: number,
+  onRemove: () => void, onMoveUp: () => void, onMoveDown: () => void 
+}) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: `grid-mobile-${day}-${time}-${food.id}-${idx}`,
+    data: { source: 'grid', day, time, foodId: food.id, idx }
+  });
+  
+  const style = transform ? {
+    transform: CSS.Translate.toString(transform),
+    zIndex: isDragging ? 100 : 0,
+    opacity: isDragging ? 0.5 : 1,
+  } : undefined;
+
+  return (
+    <div 
+      ref={setNodeRef}
+      style={style}
+      {...listeners}
+      {...attributes}
+      className={`text-[9px] text-center relative group w-full flex items-center justify-center gap-0.5 hover:bg-orange-50 hover:ring-1 hover:ring-orange-200 rounded py-0.5 transition-all cursor-grab active:cursor-grabbing ${isDragging ? 'z-50 opacity-50 shadow-lg' : ''}`}
+    >
+      <div className="flex flex-col">
+        {idx > 0 && <button onPointerDown={(e) => { e.stopPropagation(); onMoveUp(); }} className="text-[7px] leading-none text-blue-400 hover:text-blue-600">▲</button>}
+        {idx < total - 1 && <button onPointerDown={(e) => { e.stopPropagation(); onMoveDown(); }} className="text-[7px] leading-none text-blue-400 hover:text-blue-600">▼</button>}
+      </div>
+      <span className="font-bold text-gray-800 leading-tight">{food.name}</span>
+      <button 
+        onPointerDown={(e) => { e.stopPropagation(); onRemove(); }}
+        className="text-red-400 text-[8px] font-bold"
+      >✕</button>
+    </div>
+  );
+}
