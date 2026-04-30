@@ -580,14 +580,6 @@ export default function MealAdminView() {
               <ImagePlus size={16} />
               <span className="hidden md:inline">배경 선택/업로드</span>
             </button>
-            <button onClick={handleReset} className="bg-red-500 text-white p-2 md:px-3 md:py-2 rounded shadow text-sm font-medium hover:bg-red-600 flex items-center gap-2" title="새로 만들기">
-              <Plus size={16} />
-              <span className="hidden md:inline">새로 만들기</span>
-            </button>
-            <button onClick={handlePdfDownload} className="bg-blue-600 text-white p-2 md:px-3 md:py-2 rounded shadow text-sm font-medium hover:bg-blue-700 flex items-center gap-2 hidden md:flex" title="PDF 다운로드">
-              <Download size={16} />
-              <span className="hidden md:inline">PDF 다운로드</span>
-            </button>
             <button 
               onClick={() => setIsHistoryManageModalOpen(true)} 
               className="bg-gray-600 text-white p-2 md:px-3 md:py-2 rounded shadow text-sm font-medium hover:bg-gray-700 flex items-center gap-2" 
@@ -595,6 +587,14 @@ export default function MealAdminView() {
             >
               <List size={16} />
               <span className="hidden md:inline">기록 관리</span>
+            </button>
+            <button onClick={handleReset} className="bg-red-500 text-white p-2 md:px-3 md:py-2 rounded shadow text-sm font-medium hover:bg-red-600 flex items-center gap-2" title="새로 만들기">
+              <Plus size={16} />
+              <span className="hidden md:inline">새로 만들기</span>
+            </button>
+            <button onClick={handlePdfDownload} className="bg-blue-600 text-white p-2 md:px-3 md:py-2 rounded shadow text-sm font-medium hover:bg-blue-700 flex items-center gap-2 hidden md:flex" title="PDF 다운로드">
+              <Download size={16} />
+              <span className="hidden md:inline">PDF 다운로드</span>
             </button>
             <button onClick={handleSave} className="bg-green-600 text-white p-2 md:px-3 md:py-2 rounded shadow text-sm font-medium hover:bg-green-700 flex items-center gap-2" title="적용하기">
               <Save size={16} />
@@ -1039,32 +1039,13 @@ export default function MealAdminView() {
               ))}
             </div>
             {/* 모바일 점심 업로드 + 히스토리 */}
-            <div className="p-3 border-t border-gray-200 flex gap-2">
+            <div className="p-3 border-t border-gray-200">
               <button 
                 onClick={() => { setIsLunchModalOpen(true); setIsMobileFoodPanelOpen(false); }}
-                className="flex-1 bg-orange-500 text-white py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-1"
+                className="w-full bg-orange-500 text-white py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 shadow-sm"
               >
-                <Camera size={16} /> 점심 사진
+                <Camera size={18} /> 오늘의 점심 사진 업로드
               </button>
-              {history.length > 0 && (
-                <select 
-                  className="flex-1 bg-white border border-gray-300 rounded-lg px-2 py-2 text-xs text-gray-700"
-                  onChange={(e) => {
-                    if (e.target.value) {
-                      const selected = history.find(h => h.id === Number(e.target.value));
-                      if (selected && confirm(`'${selected.weekTitle}' 식단표를 불러오시겠습니까?`)) {
-                        setMenus(selected.menus);
-                        setSettings(selected.settings);
-                        if (selected.todayLunch) setTodayLunch(selected.todayLunch);
-                      }
-                      e.target.value = "";
-                    }
-                  }}
-                >
-                  <option value="">과거 식단 불러오기</option>
-                  {history.map(h => <option key={h.id} value={h.id}>{h.weekTitle}</option>)}
-                </select>
-              )}
             </div>
           </div>
         </div>
