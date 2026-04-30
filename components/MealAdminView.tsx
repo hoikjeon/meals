@@ -871,6 +871,7 @@ export default function MealAdminView() {
         </div>
         </div>
       </div>
+      </div>
 
       {/* Right Area: Component Block (데스크탑) */}
       <div className="hidden md:flex w-80 bg-white shadow-lg flex-col rounded-xl border border-gray-200 overflow-hidden">
