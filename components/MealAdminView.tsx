@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { DndContext, DragEndEvent, DragOverlay, useSensor, useSensors, PointerSensor, DragStartEvent, closestCenter, useDraggable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { DAYS, getWeekDatesFromTitle } from '@/lib/dateUtils';
 import { dummyFoodItems, dummyWeeklyMenus, dummySettings, dummyTodayLunch } from '@/lib/dummyData';
 import { FoodItem, MealEntry, DayOfWeek, MealTime, Category } from '@/lib/types';
 import { DroppableCell } from './DroppableCell';
@@ -18,7 +19,7 @@ import { supabase } from '@/lib/supabase';
 const ADMIN_ID = 'ys';
 const ADMIN_PW = 'ys1004!';
 
-const DAYS: DayOfWeek[] = ['월', '화', '수', '목', '금', '토', '일'];
+
 const TIMES: MealTime[] = ['아침', '점심', '저녁'];
 const CATEGORIES = ['밥', '국', '반찬'] as const;
 const CHOSUNGS = ['전체', 'ㄱ', 'ㄴ', 'ㄷ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅅ', 'ㅇ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'];
@@ -47,13 +48,13 @@ export default function MealAdminView() {
   const [showPassword, setShowPassword] = useState(false);
 
   // 기존 상태들 (훅 규칙 준수를 위해 early return 전에 선언)
-  const [menus, setMenus] = useState<MealEntry[]>(dummyWeeklyMenus);
+  const [menus, setMenus] = useState<MealEntry[]>([]);
   const [settings, setSettings] = useState(dummySettings);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'밥' | '국' | '반찬'>('반찬');
   const [bgImageFile, setBgImageFile] = useState<string | null>(null);
   const [todayLunch, setTodayLunch] = useState(dummyTodayLunch);
-  const [foodDb, setFoodDb] = useState<FoodItem[]>(dummyFoodItems);
+  const [foodDb, setFoodDb] = useState<FoodItem[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isBgModalOpen, setIsBgModalOpen] = useState(false);
   const [isWeekModalOpen, setIsWeekModalOpen] = useState(false);
@@ -73,6 +74,7 @@ export default function MealAdminView() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [pendingKimchiDrop, setPendingKimchiDrop] = useState<{foodId: string; day: DayOfWeek; time: MealTime} | null>(null);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  const [lastSavedData, setLastSavedData] = useState<string>('');
   
   // AI 관련 상태
   const [aiStep, setAiStep] = useState<'input' | 'review'>('input');
@@ -106,35 +108,16 @@ export default function MealAdminView() {
       else if (foodError) console.error('Error fetching food items:', foodError);
 
       // 2. 현재 식단 상태 로드
-      const { data: stateData, error: stateError } = await supabase
+      const { data: stateData } = await supabase
         .from('current_meal_state')
         .select('*')
         .eq('id', 1)
         .single();
       
-      if (stateData) {
-        setMenus(stateData.menus);
-        // 즐겨찾기와 히스토리 순서 보존을 위해 별도 관리
-        const loadedSettings = stateData.settings;
-        // 배추김치 자동 즐겨찾기 추가
-        if (foodData) {
-          const kimchi = foodData.find((f: any) => f.name === '배추김치');
-          if (kimchi) {
-            const favs = loadedSettings.favoriteFoodIds || [];
-            if (!favs.includes(kimchi.id)) {
-              loadedSettings.favoriteFoodIds = [...favs, kimchi.id];
-            }
-          }
-        }
-        setSettings(loadedSettings);
-        setTodayLunch(stateData.today_lunch);
-      }
-
       // 3. 히스토리 로드
-      const { data: historyData, error: historyError } = await supabase
-        .from('meal_history')
-        .select('*');
+      const { data: historyData } = await supabase.from('meal_history').select('*');
       
+      let historyEntries: any[] = [];
       if (historyData) {
         const sorted = [...historyData].sort((a: any, b: any) => {
           const parse = (title: string) => {
@@ -148,7 +131,7 @@ export default function MealAdminView() {
           return pa.week - pb.week;
         });
         
-        const historyEntries = sorted.map(h => ({
+        historyEntries = sorted.map(h => ({
           id: h.id,
           weekTitle: h.week_title,
           menus: h.menus,
@@ -156,7 +139,7 @@ export default function MealAdminView() {
           todayLunch: h.today_lunch
         }));
 
-        // Apply manual order if exists
+        // Apply manual order
         const order = stateData?.settings?.historyOrder;
         if (order && Array.isArray(order)) {
           historyEntries.sort((a, b) => {
@@ -169,6 +152,50 @@ export default function MealAdminView() {
           });
         }
         setHistory(historyEntries);
+      }
+
+      // 4. 초기 표시 데이터 결정
+      const today = new Date();
+      const todayIdx = historyEntries.findIndex((h: any) => {
+        const dates = getWeekDatesFromTitle(h.weekTitle);
+        return dates.some(d => 
+          d.getDate() === today.getDate() && 
+          d.getMonth() === today.getMonth() && 
+          d.getFullYear() === today.getFullYear()
+        );
+      });
+
+      let entryToLoad = null;
+      if (todayIdx >= 0) {
+        entryToLoad = historyEntries[todayIdx];
+      } else if (historyEntries.length > 0) {
+        entryToLoad = historyEntries[historyEntries.length - 1];
+      } else if (stateData) {
+        entryToLoad = stateData;
+      }
+
+      if (entryToLoad) {
+        setMenus(entryToLoad.menus);
+        setSettings(entryToLoad.settings);
+        if (entryToLoad.today_lunch) setTodayLunch(entryToLoad.today_lunch);
+        else if (entryToLoad.todayLunch) setTodayLunch(entryToLoad.todayLunch);
+        
+        // 초기 저장 상태 기록
+        const initialData = {
+          menus: entryToLoad.menus,
+          settings: entryToLoad.settings,
+          todayLunch: entryToLoad.today_lunch || entryToLoad.todayLunch
+        };
+        setLastSavedData(JSON.stringify(initialData));
+
+        // 만약 불러온 데이터가 과거 기록이라 배경이 없을 경우, 최신 상태(stateData)의 배경을 적용
+        if (stateData && (!entryToLoad.settings?.backgroundImageUrl && !entryToLoad.settings?.backgroundColor)) {
+          setSettings(prev => ({
+            ...prev,
+            backgroundImageUrl: stateData.settings.backgroundImageUrl,
+            backgroundColor: stateData.settings.backgroundColor
+          }));
+        }
       }
 
       setIsLoaded(true);
@@ -319,6 +346,7 @@ export default function MealAdminView() {
     }
 
     alert('저장되었습니다! 일반 사용자 화면에 반영됩니다.');
+    setLastSavedData(JSON.stringify({ menus, settings, todayLunch }));
   };
   
   const handleDeleteHistory = async (id: string) => {
@@ -362,15 +390,26 @@ export default function MealAdminView() {
     }
 
     const selected = history[targetIndex];
-    if (confirm(`'${selected.weekTitle}' 식단표를 불러오시겠습니까?\n저장하지 않은 캔버스의 변경사항은 덮어씌워집니다.`)) {
+    const currentData = JSON.stringify({ menus, settings, todayLunch });
+    const hasChanges = lastSavedData !== currentData;
+
+    if (!hasChanges || confirm(`'${selected.weekTitle}' 식단표를 불러오시겠습니까?\n저장하지 않은 캔버스의 변경사항은 덮어씌워집니다.`)) {
       setMenus(selected.menus);
-      // 즐겨찾기와 히스토리 순서는 현재 값 유지
       setSettings({
         ...selected.settings,
         favoriteFoodIds: settings.favoriteFoodIds,
         historyOrder: settings.historyOrder,
       });
       if (selected.todayLunch) setTodayLunch(selected.todayLunch);
+      setLastSavedData(JSON.stringify({
+        menus: selected.menus,
+        settings: {
+          ...selected.settings,
+          favoriteFoodIds: settings.favoriteFoodIds,
+          historyOrder: settings.historyOrder,
+        },
+        todayLunch: selected.todayLunch
+      }));
     }
   };
 
@@ -581,16 +620,24 @@ export default function MealAdminView() {
       reader.onload = (event) => {
         const url = event.target?.result as string;
         setBgImageFile(url);
-        setSettings({ ...settings, backgroundImageUrl: url });
+        const newSettings = { ...settings, backgroundImageUrl: url };
+        setSettings(newSettings);
         setIsBgModalOpen(false);
+        
+        // 배경 변경 시 즉시 DB 저장
+        supabase.from('current_meal_state').update({ settings: newSettings }).eq('id', 1).then();
       };
       reader.readAsDataURL(file);
     }
   };
 
   const applyPresetBackground = (url: string | null, color: string) => {
-    setSettings({ ...settings, backgroundImageUrl: url, backgroundColor: color });
+    const newSettings = { ...settings, backgroundImageUrl: url, backgroundColor: color };
+    setSettings(newSettings);
     setIsBgModalOpen(false);
+    
+    // 배경 변경 시 즉시 DB 저장
+    supabase.from('current_meal_state').update({ settings: newSettings }).eq('id', 1).then();
   };
 
   const handleLunchImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -619,27 +666,63 @@ export default function MealAdminView() {
 
   const handlePdfDownload = async () => {
     if (!canvasRef.current) return;
-    try {
-      const filter = (node: HTMLElement) => {
-        const exclusionClasses = ['ignore-pdf'];
-        return !exclusionClasses.some(cls => node.classList?.contains(cls));
-      };
 
-      const imgData = await toPng(canvasRef.current, { 
-        cacheBust: true, 
+    let container: HTMLDivElement | null = null;
+    try {
+      const element = canvasRef.current;
+      const CAPTURE_W = 794; // 210mm @ 96dpi
+
+      // 오프스크린 컨테이너에 클론을 만들어 캡처
+      // (원본의 mx-auto 마진이 이미지에 포함되는 문제 방지)
+      container = document.createElement('div');
+      container.style.cssText = `position:fixed;top:-9999px;left:-9999px;width:${CAPTURE_W}px;overflow:hidden;`;
+      document.body.appendChild(container);
+
+      const clone = element.cloneNode(true) as HTMLElement;
+      clone.style.width = `${CAPTURE_W}px`;
+      clone.style.minWidth = `${CAPTURE_W}px`;
+      clone.style.maxWidth = `${CAPTURE_W}px`;
+      clone.style.margin = '0';
+      clone.style.boxShadow = 'none';
+      clone.style.overflow = 'hidden';
+      container.appendChild(clone);
+
+      // 클론에서 ignore-pdf 요소 숨김
+      (Array.from(clone.querySelectorAll('.ignore-pdf')) as HTMLElement[])
+        .forEach(el => { el.style.display = 'none'; });
+
+      await new Promise(r => setTimeout(r, 150));
+
+      const captureH = clone.scrollHeight;
+
+      const imgData = await toPng(clone, {
+        cacheBust: true,
         pixelRatio: 2,
-        filter: filter as any
+        width: CAPTURE_W,
+        height: captureH,
       });
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4',
-      });
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvasRef.current.offsetHeight * pdfWidth) / canvasRef.current.offsetWidth;
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-      pdf.save('주간식단표.pdf');
+
+      document.body.removeChild(container);
+      container = null;
+
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const pdfW = pdf.internal.pageSize.getWidth();   // 210
+      const pdfH = pdf.internal.pageSize.getHeight();  // 297
+
+      const imgHeightMM = pdfW * (captureH / CAPTURE_W);
+
+      if (imgHeightMM <= pdfH) {
+        pdf.addImage(imgData, 'PNG', 0, 0, pdfW, imgHeightMM);
+      } else {
+        const scaledW = pdfH * (CAPTURE_W / captureH);
+        pdf.addImage(imgData, 'PNG', (pdfW - scaledW) / 2, 0, scaledW, pdfH);
+      }
+
+      pdf.save(`${settings.weekTitle || '주간식단표'}.pdf`);
     } catch (error) {
+      if (container && document.body.contains(container)) {
+        document.body.removeChild(container);
+      }
       console.error("PDF 생성 실패", error);
       alert("PDF 생성 중 오류가 발생했습니다.");
     }
@@ -728,9 +811,9 @@ export default function MealAdminView() {
               <Download size={16} />
               <span className="hidden md:inline">PDF 다운로드</span>
             </button>
-            <button onClick={handleSave} className="bg-green-600 text-white p-2 md:px-3 md:py-2 rounded shadow text-sm font-medium hover:bg-green-700 flex items-center gap-2" title="적용하기">
+            <button onClick={handleSave} className="bg-green-600 text-white p-2 md:px-3 md:py-2 rounded shadow text-sm font-medium hover:bg-green-700 flex items-center gap-2" title="저장하기">
               <Save size={16} />
-              <span className="hidden md:inline">적용하기</span>
+              <span className="hidden md:inline">저장하기</span>
             </button>
           </div>
         </div>
@@ -942,7 +1025,7 @@ export default function MealAdminView() {
                     if (!error) alert('원산지 정보가 저장되었습니다. 앞으로 새 식단표 작성 시에도 이 내용이 유지됩니다.');
                     else alert('저장 실패: ' + error.message);
                   }}
-                  className="text-[10px] bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-1 rounded border border-gray-300 transition-colors font-bold"
+                  className="ignore-pdf text-[10px] bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-1 rounded border border-gray-300 transition-colors font-bold"
                 >
                   원산지 정보 저장
                 </button>
@@ -1091,7 +1174,7 @@ export default function MealAdminView() {
               <option value="">이전 식단 선택...</option>
               {history.map(h => <option key={h.id} value={h.id}>{h.weekTitle}</option>)}
             </select>
-            <p className="text-[10px] text-gray-500 mt-1">* 적용하기를 누를 때마다 과거 식단에 저장됩니다.</p>
+            <p className="text-[10px] text-gray-500 mt-1">* 저장하기를 누를 때마다 과거 식단에 저장됩니다.</p>
           </div>
         )}
       </div>

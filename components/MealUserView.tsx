@@ -134,25 +134,34 @@ export default function MealUserView() {
   const handlePdfDownload = async () => {
     if (!pdfRef.current) return;
     try {
-      const filter = (node: HTMLElement) => {
-        const exclusionClasses = ['ignore-pdf'];
-        return !exclusionClasses.some(cls => node.classList?.contains(cls));
-      };
+      const element = pdfRef.current;
 
-      const imgData = await toPng(pdfRef.current, { 
-        cacheBust: true, 
+      await new Promise(r => setTimeout(r, 100));
+
+      const captureW = element.offsetWidth;
+      const captureH = element.scrollHeight;
+
+      const imgData = await toPng(element, {
+        cacheBust: true,
         pixelRatio: 2,
-        filter: filter as any
+        width: captureW,
+        height: captureH,
       });
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4',
-      });
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (pdfRef.current.offsetHeight * pdfWidth) / pdfRef.current.offsetWidth;
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-      pdf.save('주간식단표_사용자용.pdf');
+
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const pdfW = pdf.internal.pageSize.getWidth();
+      const pdfH = pdf.internal.pageSize.getHeight();
+
+      const imgHeightMM = pdfW * (captureH / captureW);
+
+      if (imgHeightMM <= pdfH) {
+        pdf.addImage(imgData, 'PNG', 0, 0, pdfW, imgHeightMM);
+      } else {
+        const scaledW = pdfH * (captureW / captureH);
+        pdf.addImage(imgData, 'PNG', (pdfW - scaledW) / 2, 0, scaledW, pdfH);
+      }
+
+      pdf.save(`${settings.weekTitle || '주간식단표'}.pdf`);
     } catch (error) {
       console.error("PDF 생성 실패", error);
       alert("PDF 생성 중 오류가 발생했습니다.");
@@ -499,11 +508,11 @@ export default function MealUserView() {
               <h3 className="text-xl font-bold text-gray-800 border-b border-gray-400 pb-1 px-4 inline-block">{settings.weekTitle || '이번 주 식단'}</h3>
             </div>
 
-            <table className="w-full border-collapse border-2 border-gray-800 bg-white bg-opacity-90">
+            <table className="w-full border-collapse border-2 border-gray-800 bg-white bg-opacity-90" style={{ tableLayout: 'fixed' }}>
               <thead>
                 <tr>
                   <th className="border border-gray-400 p-2 w-12 text-center bg-gray-100"></th>
-                  {DAYS.map(day => (
+                  {(['월', '화', '수', '목', '금'] as const).map(day => (
                     <th key={day} className="border border-gray-400 p-2 text-center bg-gray-50 font-bold">
                       {day}요일
                     </th>
@@ -516,12 +525,12 @@ export default function MealUserView() {
                     <td className="border border-gray-400 p-2 text-center font-bold bg-gray-50 align-middle">
                       {time}
                     </td>
-                    {DAYS.map(day => {
+                    {(['월', '화', '수', '목', '금'] as const).map(day => {
                       const menuEntry = menus.find(m => m.day === day && m.time === time);
                       const foods = menuEntry ? menuEntry.foodIds.map(id => foodDb.find(f => f.id === id)!).filter(Boolean) : [];
-                      
+
                       return (
-                        <td key={`${day}-${time}`} className="border border-gray-400 p-0 align-top relative h-[160px] w-[13%]">
+                        <td key={`${day}-${time}`} className="border border-gray-400 p-0 align-top relative h-[160px]">
                           <div className="min-h-[160px] h-full p-2 flex flex-col gap-2 items-center justify-start">
                             {foods.map(food => (
                               <div key={food.id} className="text-[11px] text-center relative w-full flex flex-col gap-0.5">
