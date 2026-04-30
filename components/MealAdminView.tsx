@@ -87,7 +87,8 @@ export default function MealAdminView() {
       // 1. Food DB 로드
       const { data: foodData, error: foodError } = await supabase
         .from('food_items')
-        .select('*');
+        .select('*')
+        .order('name', { ascending: true });
       if (foodData) setFoodDb(foodData);
       else if (foodError) console.error('Error fetching food items:', foodError);
 

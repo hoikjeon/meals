@@ -28,7 +28,10 @@ export default function MealUserView() {
   useEffect(() => {
     const fetchData = async () => {
       // 1. Food DB 로드
-      const { data: foodData } = await supabase.from('food_items').select('*');
+      const { data: foodData } = await supabase
+        .from('food_items')
+        .select('*')
+        .order('name', { ascending: true });
       if (foodData) setFoodDb(foodData);
 
       // 2. 현재 상태 로드
