@@ -1,7 +1,9 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from 'react';
-import { DndContext, DragEndEvent, DragOverlay, useSensor, useSensors, PointerSensor, DragStartEvent } from '@dnd-kit/core';
+import { DndContext, DragEndEvent, DragOverlay, useSensor, useSensors, PointerSensor, DragStartEvent, closestCenter } from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { dummyFoodItems, dummyWeeklyMenus, dummySettings, dummyTodayLunch } from '@/lib/dummyData';
 import { FoodItem, MealEntry, DayOfWeek, MealTime } from '@/lib/types';
 import { DroppableCell } from './DroppableCell';
@@ -115,21 +117,36 @@ export default function MealAdminView() {
         const sorted = [...historyData].sort((a: any, b: any) => {
           const parse = (title: string) => {
             const match = title.match(/(\d+)\s*월\s*(\d+)\s*주/);
-            if (!match) return { month: 99, week: 99 };
+            if (!match) return { month: 0, week: 0 };
             return { month: parseInt(match[1]), week: parseInt(match[2]) };
           };
           const pa = parse(a.week_title || '');
           const pb = parse(b.week_title || '');
-          if (pa.month !== pb.month) return pa.month - pb.month;
-          return pa.week - pb.week;
+          if (pa.month !== pb.month) return pb.month - pa.month;
+          return pb.week - pa.week;
         });
-        setHistory(sorted.map(h => ({
+        
+        const historyEntries = sorted.map(h => ({
           id: h.id,
           weekTitle: h.week_title,
           menus: h.menus,
           settings: h.settings,
           todayLunch: h.today_lunch
-        })));
+        }));
+
+        // Apply manual order if exists
+        const order = stateData?.settings?.historyOrder;
+        if (order && Array.isArray(order)) {
+          historyEntries.sort((a, b) => {
+            const idxA = order.indexOf(a.id);
+            const idxB = order.indexOf(b.id);
+            if (idxA === -1 && idxB === -1) return 0;
+            if (idxA === -1) return 1;
+            if (idxB === -1) return -1;
+            return idxA - idxB;
+          });
+        }
+        setHistory(historyEntries);
       }
 
       setIsLoaded(true);
@@ -414,6 +431,31 @@ export default function MealAdminView() {
     }
   };
 
+
+  const handleHistoryDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      setHistory((prev) => {
+        const oldIndex = prev.findIndex((h) => h.id === active.id);
+        const newIndex = prev.findIndex((h) => h.id === over.id);
+        const newHistory = arrayMove(prev, oldIndex, newIndex);
+        
+        // 순서 변경 시 DB에도 즉시 반영 (settings.historyOrder 업데이트)
+        const newOrder = newHistory.map(h => h.id);
+        const newSettings = { ...settings, historyOrder: newOrder };
+        setSettings(newSettings);
+        
+        supabase.from('current_meal_state')
+          .update({ settings: newSettings })
+          .eq('id', 1)
+          .then(({ error }) => {
+            if (error) console.error('히스토리 순서 저장 실패:', error);
+          });
+          
+        return newHistory;
+      });
+    }
+  };
 
   const removeFood = (day: DayOfWeek, time: MealTime, foodId: string) => {
     setMenus((prev) => {
@@ -1409,38 +1451,34 @@ export default function MealAdminView() {
                   저장된 기록이 없습니다.
                 </div>
               ) : (
-                <div className="space-y-2">
-                  {[...history].reverse().map((h) => (
-                    <div key={h.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors group">
-                      <div className="flex flex-col">
-                        <span className="font-bold text-gray-800">{h.weekTitle}</span>
-                        <span className="text-[10px] text-gray-400">ID: {h.id}</span>
-                      </div>
-                      <div className="flex gap-2">
-                        <button 
-                          onClick={() => {
-                            if (confirm(`'${h.weekTitle}' 식단표를 불러오시겠습니까?`)) {
-                              setMenus(h.menus);
-                              setSettings(h.settings);
-                              if (h.todayLunch) setTodayLunch(h.todayLunch);
+                <DndContext 
+                  sensors={sensors} 
+                  collisionDetection={closestCenter} 
+                  onDragEnd={handleHistoryDragEnd}
+                >
+                  <SortableContext 
+                    items={history.map(h => h.id)} 
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div className="space-y-2">
+                      {history.map((h) => (
+                        <SortableHistoryItem 
+                          key={h.id} 
+                          h={h} 
+                          onUpdate={(entry) => {
+                            if (confirm(`'${entry.weekTitle}' 식단표를 불러오시겠습니까?`)) {
+                              setMenus(entry.menus);
+                              setSettings(entry.settings);
+                              if (entry.todayLunch) setTodayLunch(entry.todayLunch);
                               setIsHistoryManageModalOpen(false);
                             }
                           }}
-                          className="px-3 py-1 bg-blue-50 text-blue-600 rounded text-xs font-bold hover:bg-blue-100"
-                        >
-                          불러오기
-                        </button>
-                        <button 
-                          onClick={() => handleDeleteHistory(h.id)}
-                          className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded"
-                          title="삭제"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                      </div>
+                          onDelete={handleDeleteHistory}
+                        />
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </SortableContext>
+                </DndContext>
               )}
             </div>
             
@@ -1469,3 +1507,56 @@ export default function MealAdminView() {
     </DndContext>
   );
 }
+
+// 히스토리 항목 소트 가능 컴포넌트
+function SortableHistoryItem({ h, onUpdate, onDelete }: { h: any, onUpdate: (h: any) => void, onDelete: (id: string) => void }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ id: h.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 100 : 0,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div 
+      ref={setNodeRef} 
+      style={style}
+      className="flex items-center justify-between p-3 border rounded-lg bg-white hover:bg-gray-50 transition-colors group"
+    >
+      <div className="flex items-center gap-3 flex-1">
+        <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing p-1 text-gray-400 hover:text-gray-600">
+          <List size={18} />
+        </div>
+        <div className="flex flex-col">
+          <span className="font-bold text-gray-800">{h.weekTitle}</span>
+          <span className="text-[10px] text-gray-400">ID: {h.id}</span>
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <button 
+          onClick={() => onUpdate(h)}
+          className="px-3 py-1 bg-blue-50 text-blue-600 rounded text-xs font-bold hover:bg-blue-100"
+        >
+          불러오기
+        </button>
+        <button 
+          onClick={() => onDelete(h.id)}
+          className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded"
+          title="삭제"
+        >
+          <Trash2 size={18} />
+        </button>
+      </div>
+    </div>
+  );
+}
+

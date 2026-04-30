@@ -54,13 +54,13 @@ export default function MealUserView() {
         const sorted = [...historyData].sort((a: any, b: any) => {
           const parse = (title: string) => {
             const match = title.match(/(\d+)\s*월\s*(\d+)\s*주/);
-            if (!match) return { month: 99, week: 99 };
+            if (!match) return { month: 0, week: 0 };
             return { month: parseInt(match[1]), week: parseInt(match[2]) };
           };
           const pa = parse(a.week_title || '');
           const pb = parse(b.week_title || '');
-          if (pa.month !== pb.month) return pa.month - pb.month;
-          return pa.week - pb.week;
+          if (pa.month !== pb.month) return pb.month - pa.month;
+          return pb.week - pa.week;
         });
         
         const historyEntries = sorted.map(h => ({
@@ -70,6 +70,19 @@ export default function MealUserView() {
           settings: h.settings,
           todayLunch: h.today_lunch
         }));
+        
+        // Apply manual order if exists in current state
+        const order = stateData?.settings?.historyOrder;
+        if (order && Array.isArray(order)) {
+          historyEntries.sort((a, b) => {
+            const idxA = order.indexOf(a.id);
+            const idxB = order.indexOf(b.id);
+            if (idxA === -1 && idxB === -1) return 0;
+            if (idxA === -1) return 1;
+            if (idxB === -1) return -1;
+            return idxA - idxB;
+          });
+        }
         
         setHistory(historyEntries);
 
