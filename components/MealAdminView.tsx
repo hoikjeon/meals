@@ -104,7 +104,19 @@ export default function MealAdminView() {
       
       if (stateData) {
         setMenus(stateData.menus);
-        setSettings(stateData.settings);
+        // 즐겨찾기와 히스토리 순서 보존을 위해 별도 관리
+        const loadedSettings = stateData.settings;
+        // 배추김치 자동 즐겨찾기 추가
+        if (foodData) {
+          const kimchi = foodData.find((f: any) => f.name === '배추김치');
+          if (kimchi) {
+            const favs = loadedSettings.favoriteFoodIds || [];
+            if (!favs.includes(kimchi.id)) {
+              loadedSettings.favoriteFoodIds = [...favs, kimchi.id];
+            }
+          }
+        }
+        setSettings(loadedSettings);
         setTodayLunch(stateData.today_lunch);
       }
 
@@ -342,7 +354,12 @@ export default function MealAdminView() {
     const selected = history[targetIndex];
     if (confirm(`'${selected.weekTitle}' 식단표를 불러오시겠습니까?\n저장하지 않은 캔버스의 변경사항은 덮어씌워집니다.`)) {
       setMenus(selected.menus);
-      setSettings(selected.settings);
+      // 즐겨찾기와 히스토리 순서는 현재 값 유지
+      setSettings({
+        ...selected.settings,
+        favoriteFoodIds: settings.favoriteFoodIds,
+        historyOrder: settings.historyOrder,
+      });
       if (selected.todayLunch) setTodayLunch(selected.todayLunch);
     }
   };
@@ -1473,7 +1490,11 @@ export default function MealAdminView() {
                           onUpdate={(entry) => {
                             if (confirm(`'${entry.weekTitle}' 식단표를 불러오시겠습니까?`)) {
                               setMenus(entry.menus);
-                              setSettings(entry.settings);
+                              setSettings({
+                                ...entry.settings,
+                                favoriteFoodIds: settings.favoriteFoodIds,
+                                historyOrder: settings.historyOrder,
+                              });
                               if (entry.todayLunch) setTodayLunch(entry.todayLunch);
                               setIsHistoryManageModalOpen(false);
                             }
