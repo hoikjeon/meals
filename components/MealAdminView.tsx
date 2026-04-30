@@ -6,7 +6,7 @@ import { dummyFoodItems, dummyWeeklyMenus, dummySettings, dummyTodayLunch } from
 import { FoodItem, MealEntry, DayOfWeek, MealTime } from '@/lib/types';
 import { DroppableCell } from './DroppableCell';
 import { DraggableFoodItem } from './DraggableFoodItem';
-import { ImagePlus, Download, BellRing, Save, ArrowLeft, Trash2, Plus, ChevronLeft, ChevronRight, Camera, Lock, Eye, EyeOff } from 'lucide-react';
+import { ImagePlus, Download, BellRing, Save, ArrowLeft, Trash2, Plus, ChevronLeft, ChevronRight, Camera, Lock, Eye, EyeOff, List, History } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import jsPDF from 'jspdf';
 import Link from 'next/link';
@@ -64,6 +64,7 @@ export default function MealAdminView() {
   const [isLunchModalOpen, setIsLunchModalOpen] = useState(false);
   const [isMobileFoodPanelOpen, setIsMobileFoodPanelOpen] = useState(false);
   const [isKimchiModalOpen, setIsKimchiModalOpen] = useState(false);
+  const [isHistoryManageModalOpen, setIsHistoryManageModalOpen] = useState(false);
   const [pendingKimchiDrop, setPendingKimchiDrop] = useState<{foodId: string; day: DayOfWeek; time: MealTime} | null>(null);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
 
@@ -279,6 +280,21 @@ export default function MealAdminView() {
     }
 
     alert('저장되었습니다! 일반 사용자 화면에 반영됩니다.');
+  };
+  
+  const handleDeleteHistory = async (id: string) => {
+    if (!confirm('이 식단 기록을 영구히 삭제하시겠습니까?')) return;
+    
+    const { error } = await supabase
+      .from('meal_history')
+      .delete()
+      .eq('id', id);
+      
+    if (error) {
+      alert('삭제 실패: ' + error.message);
+    } else {
+      setHistory(prev => prev.filter(h => h.id !== id));
+    }
   };
 
   const handleLoadHistory = (direction: 'prev' | 'next') => {
@@ -571,6 +587,14 @@ export default function MealAdminView() {
             <button onClick={handlePdfDownload} className="bg-blue-600 text-white p-2 md:px-3 md:py-2 rounded shadow text-sm font-medium hover:bg-blue-700 flex items-center gap-2 hidden md:flex" title="PDF 다운로드">
               <Download size={16} />
               <span className="hidden md:inline">PDF 다운로드</span>
+            </button>
+            <button 
+              onClick={() => setIsHistoryManageModalOpen(true)} 
+              className="bg-gray-600 text-white p-2 md:px-3 md:py-2 rounded shadow text-sm font-medium hover:bg-gray-700 flex items-center gap-2" 
+              title="히스토리 관리"
+            >
+              <List size={16} />
+              <span className="hidden md:inline">기록 관리</span>
             </button>
             <button onClick={handleSave} className="bg-green-600 text-white p-2 md:px-3 md:py-2 rounded shadow text-sm font-medium hover:bg-green-700 flex items-center gap-2" title="적용하기">
               <Save size={16} />
@@ -1371,6 +1395,71 @@ export default function MealAdminView() {
                 className="w-full mt-3 py-2 text-gray-400 hover:text-gray-600 text-sm transition-colors"
               >
                 취소
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* History Management Modal */}
+      {isHistoryManageModalOpen && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-xl shadow-xl w-[500px] max-w-[90vw] overflow-hidden flex flex-col max-h-[80vh]">
+            <div className="p-4 border-b flex justify-between items-center bg-gray-50">
+              <h2 className="font-bold text-lg flex items-center gap-2">
+                <History size={20} className="text-gray-600" />
+                저장된 식단 기록 관리
+              </h2>
+              <button onClick={() => setIsHistoryManageModalOpen(false)} className="text-gray-500 hover:text-gray-800">✕</button>
+            </div>
+            
+            <div className="p-4 overflow-y-auto">
+              {history.length === 0 ? (
+                <div className="text-center py-10 text-gray-400">
+                  저장된 기록이 없습니다.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {[...history].reverse().map((h) => (
+                    <div key={h.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors group">
+                      <div className="flex flex-col">
+                        <span className="font-bold text-gray-800">{h.weekTitle}</span>
+                        <span className="text-[10px] text-gray-400">ID: {h.id}</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => {
+                            if (confirm(`'${h.weekTitle}' 식단표를 불러오시겠습니까?`)) {
+                              setMenus(h.menus);
+                              setSettings(h.settings);
+                              if (h.todayLunch) setTodayLunch(h.todayLunch);
+                              setIsHistoryManageModalOpen(false);
+                            }
+                          }}
+                          className="px-3 py-1 bg-blue-50 text-blue-600 rounded text-xs font-bold hover:bg-blue-100"
+                        >
+                          불러오기
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteHistory(h.id)}
+                          className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded"
+                          title="삭제"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            
+            <div className="p-4 border-t bg-gray-50 text-center">
+              <button 
+                onClick={() => setIsHistoryManageModalOpen(false)}
+                className="w-full py-2 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 transition-colors"
+              >
+                닫기
               </button>
             </div>
           </div>
