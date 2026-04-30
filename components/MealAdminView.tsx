@@ -416,8 +416,10 @@ export default function MealAdminView() {
     if (over) {
       const foodId = active.id as string;
       const food = foodDb.find(f => f.id === foodId);
-      // over.id format: "day-time" (e.g., "월-아침")
-      const [day, time] = (over.id as string).split('-') as [DayOfWeek, MealTime];
+      // over.id format: "desktop-day-time" or "mobile-day-time"
+      const parts = (over.id as string).split('-');
+      const day = parts[1] as DayOfWeek;
+      const time = parts[2] as MealTime;
 
       // 배추김치 특별 처리 - 커스텀 모달로 확인
       if (food && food.name === '배추김치') {
@@ -680,7 +682,7 @@ export default function MealAdminView() {
                         const foods = menuEntry ? menuEntry.foodIds.map(id => foodDb.find(f => f.id === id)!).filter(Boolean) : [];
                         return (
                           <td key={`m-${day}-${time}`} className="border border-gray-200 p-1 align-top h-[80px] w-[12%]">
-                            <DroppableCell id={`${day}-${time}`}>
+                            <DroppableCell id={`mobile-${day}-${time}`}>
                               <div className="min-h-[70px] flex flex-col gap-1 items-center">
                                 {foods.map((food, idx) => food && (
                                   <div key={food.id} className="text-[9px] text-center relative group w-full flex items-center justify-center gap-0.5 hover:bg-orange-50 hover:ring-1 hover:ring-orange-200 rounded py-0.5 transition-all cursor-pointer">
@@ -794,7 +796,7 @@ export default function MealAdminView() {
                       
                       return (
                         <td key={`${day}-${time}`} className="border border-gray-400 p-0 align-top relative h-[160px] w-[13%]">
-                          <DroppableCell id={`${day}-${time}`}>
+                          <DroppableCell id={`desktop-${day}-${time}`}>
                             <div className="min-h-[160px] h-full p-2 flex flex-col gap-2 items-center justify-start overflow-hidden">
                               {foods.map((food, idx) => food && (
                                 <div key={food.id} className="text-[11px] text-center relative group w-full flex flex-col items-center hover:bg-orange-50 hover:ring-1 hover:ring-orange-200 rounded p-1 transition-all cursor-pointer">
