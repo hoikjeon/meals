@@ -447,6 +447,7 @@ export default function MealAdminView() {
 
       addFoodToCell(foodId, day, time);
       setSelectedChosung('전체');
+      setSearchQuery('');
     }
   };
 
