@@ -226,7 +226,7 @@ export default function MealAdminView() {
 
     if (stateError) {
       console.error('Error saving state:', stateError);
-      return alert('저장 실패: ' + stateError.message);
+      return alert('저장 실패: ' + (stateError?.message || '알 수 없는 오류'));
     }
 
     // 2. 히스토리에 추가
@@ -710,7 +710,7 @@ export default function MealAdminView() {
                       setFoodDb(foodDb.filter(item => item.id !== f.id));
                       setMenus(menus.map(m => ({...m, foodIds: m.foodIds.filter(id => id !== f.id)})));
                     } else {
-                      alert('삭제 실패: ' + error.message);
+                      alert('삭제 실패: ' + (error?.message || '알 수 없는 오류'));
                     }
                   }
                 }}
@@ -835,7 +835,7 @@ export default function MealAdminView() {
                         setFoodDb(foodDb.filter(item => item.id !== f.id));
                         setMenus(menus.map(m => ({...m, foodIds: m.foodIds.filter(id => id !== f.id)})));
                       } else {
-                        alert('삭제 실패: ' + error.message);
+                        alert('삭제 실패: ' + (error?.message || '알 수 없는 오류'));
                       }
                     }
                   }}
@@ -1027,7 +1027,7 @@ export default function MealAdminView() {
                         setMenus(menus.map(m => ({...m, foodIds: m.foodIds.filter(id => id !== editingFood.id)})));
                         setIsFoodModalOpen(false);
                       } else {
-                        alert('삭제 실패: ' + error.message);
+                        alert('삭제 실패: ' + (error?.message || '알 수 없는 오류'));
                       }
                     }
                   }}
