@@ -319,15 +319,19 @@ export default function MealAdminView() {
       return;
     }
 
-    // 2. 히스토리에 추가
-    const { error: historyError } = await supabase
-      .from('meal_history')
-      .insert({
-        week_title: settings.weekTitle,
-        menus,
-        settings,
-        today_lunch: todayLunch
-      });
+    // 2. 같은 주차 제목이 있으면 덮어쓰기, 없으면 새로 추가
+    const existing = history.find(h => h.weekTitle === settings.weekTitle);
+    let historyError;
+    if (existing) {
+      ({ error: historyError } = await supabase
+        .from('meal_history')
+        .update({ menus, settings, today_lunch: todayLunch })
+        .eq('id', existing.id));
+    } else {
+      ({ error: historyError } = await supabase
+        .from('meal_history')
+        .insert({ week_title: settings.weekTitle, menus, settings, today_lunch: todayLunch }));
+    }
 
     if (historyError) {
       console.warn('Error saving history:', historyError);
