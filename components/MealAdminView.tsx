@@ -1148,22 +1148,31 @@ export default function MealAdminView() {
               💡 초기화 후 상단의 초록색 <b>[적용하기]</b> 버튼을 누르셔야 실제 사용자 화면에 반영됩니다.
             </p>
 
-            <div className="flex justify-end gap-2 mt-2">
-              <button 
-                onClick={() => setIsWeekModalOpen(false)} 
-                className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 font-medium"
-              >
-                취소
-              </button>
+            <div className="flex flex-col gap-2 mt-2">
               <button 
                 onClick={() => {
-                  // setMenus([]) 를 호출하지 않아 기존 메뉴를 유지함
+                  setMenus([]); // 내용 초기화
                   setSettings({ ...settings, weekTitle: `${selectedMonth}월 ${selectedWeek}주차 식단표` });
                   setIsWeekModalOpen(false);
                 }} 
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-bold"
+                className="w-full px-4 py-3 bg-red-500 text-white rounded-lg hover:bg-red-600 font-bold shadow-md transition-all"
               >
-                확인 및 내용 유지
+                🗑️ 내용 전체 비우고 새로 만들기
+              </button>
+              <button 
+                onClick={() => {
+                  setSettings({ ...settings, weekTitle: `${selectedMonth}월 ${selectedWeek}주차 식단표` });
+                  setIsWeekModalOpen(false);
+                }} 
+                className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold shadow-md transition-all"
+              >
+                📝 내용 유지하며 주차만 변경
+              </button>
+              <button 
+                onClick={() => setIsWeekModalOpen(false)} 
+                className="w-full px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium mt-2"
+              >
+                취소
               </button>
             </div>
           </div>
