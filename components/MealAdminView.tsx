@@ -1247,8 +1247,14 @@ export default function MealAdminView() {
             <div className="flex flex-col gap-2 mt-2">
               <button 
                 onClick={() => {
+                  const newTitle = `${selectedMonth}월 ${selectedWeek}주차 식단표`;
+                  const isDuplicate = history.some(h => h.weekTitle === newTitle);
+                  if (isDuplicate) {
+                    alert(`이미 '${newTitle}' 데이터가 히스토리에 존재합니다.\n중복된 주차로는 새로 만들 수 없습니다.`);
+                    return;
+                  }
                   setMenus([]); // 내용 초기화
-                  setSettings({ ...settings, weekTitle: `${selectedMonth}월 ${selectedWeek}주차 식단표` });
+                  setSettings({ ...settings, weekTitle: newTitle });
                   setIsWeekModalOpen(false);
                 }} 
                 className="w-full px-4 py-3 bg-red-500 text-white rounded-lg hover:bg-red-600 font-bold shadow-md transition-all"
@@ -1257,7 +1263,13 @@ export default function MealAdminView() {
               </button>
               <button 
                 onClick={() => {
-                  setSettings({ ...settings, weekTitle: `${selectedMonth}월 ${selectedWeek}주차 식단표` });
+                  const newTitle = `${selectedMonth}월 ${selectedWeek}주차 식단표`;
+                  const isDuplicate = history.some(h => h.weekTitle === newTitle);
+                  if (isDuplicate) {
+                    alert(`이미 '${newTitle}' 데이터가 히스토리에 존재합니다.\n중복된 주차로 변경할 수 없습니다.`);
+                    return;
+                  }
+                  setSettings({ ...settings, weekTitle: newTitle });
                   setIsWeekModalOpen(false);
                 }} 
                 className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold shadow-md transition-all"
