@@ -606,9 +606,13 @@ export default function MealAdminView() {
   };
 
   const filteredFoods = foodDb.filter(f => {
-    if (f.category !== activeTab) return false;
+    // 검색어가 있으면 카테고리 무시하고 전체 검색
+    if (searchQuery) {
+      if (!f.name.includes(searchQuery)) return false;
+    } else {
+      if (f.category !== activeTab) return false;
+    }
     if (showFavoritesOnly && !(settings.favoriteFoodIds || []).includes(f.id)) return false;
-    if (searchQuery && !f.name.includes(searchQuery)) return false;
     if (selectedChosung !== '전체') {
       const chosung = getChosungGroup(f.name.charAt(0));
       if (chosung !== selectedChosung) return false;
