@@ -775,7 +775,7 @@ export default function MealAdminView() {
               </div>
             </div>
 
-            <table className="w-full border-collapse border-2 border-gray-800 bg-white bg-opacity-90">
+            <table className="w-full border-collapse border-2 border-gray-800 bg-white bg-opacity-90" style={{ tableLayout: 'fixed' }}>
               <thead>
                 <tr>
                   <th className="border border-gray-400 p-2 w-12 text-center bg-gray-100"></th>
@@ -797,12 +797,12 @@ export default function MealAdminView() {
                       const foods = menuEntry ? menuEntry.foodIds.map(id => foodDb.find(f => f.id === id)!).filter(Boolean) : [];
                       
                       return (
-                        <td key={`${day}-${time}`} className="border border-gray-400 p-0 align-top relative h-[160px] w-[13%]">
+                        <td key={`${day}-${time}`} className="border border-gray-400 p-0 align-top relative h-[160px] overflow-hidden">
                           <DroppableCell id={`desktop-${day}-${time}`}>
                             <div className="min-h-[160px] h-full p-2 flex flex-col gap-2 items-center justify-start overflow-hidden">
                               {foods.map((food, idx) => food && (
                                 <div key={food.id} className="text-[11px] text-center relative group w-full flex flex-col items-center hover:bg-orange-50 hover:ring-1 hover:ring-orange-200 rounded p-1 transition-all cursor-pointer">
-                                  <div className="font-bold text-gray-800 leading-tight break-keep">{food.name}</div>
+                                  <div className="font-bold text-gray-800 leading-tight" style={{ wordBreak: 'keep-all', overflowWrap: 'break-word' }}>{food.name}</div>
                                   {food.origin && <div className="text-[9px] text-gray-500 leading-tight">({food.origin})</div>}
                                   
                                   {/* 순서 변경 및 삭제 버튼 패널 */}
