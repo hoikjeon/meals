@@ -59,8 +59,8 @@ export default function MealUserView() {
           };
           const pa = parse(a.week_title || '');
           const pb = parse(b.week_title || '');
-          if (pa.month !== pb.month) return pb.month - pa.month;
-          return pb.week - pa.week;
+          if (pa.month !== pb.month) return pa.month - pb.month;
+          return pa.week - pb.week;
         });
         
         const historyEntries = sorted.map(h => ({

@@ -5,14 +5,15 @@ import { DndContext, DragEndEvent, DragOverlay, useSensor, useSensors, PointerSe
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { dummyFoodItems, dummyWeeklyMenus, dummySettings, dummyTodayLunch } from '@/lib/dummyData';
-import { FoodItem, MealEntry, DayOfWeek, MealTime } from '@/lib/types';
+import { FoodItem, MealEntry, DayOfWeek, MealTime, Category } from '@/lib/types';
 import { DroppableCell } from './DroppableCell';
 import { DraggableFoodItem } from './DraggableFoodItem';
-import { ImagePlus, Download, BellRing, Save, ArrowLeft, Trash2, Plus, ChevronLeft, ChevronRight, Camera, Lock, Eye, EyeOff, List, History } from 'lucide-react';
+import { ImagePlus, Download, BellRing, Save, ArrowLeft, Trash2, Plus, ChevronLeft, ChevronRight, Camera, Lock, Eye, EyeOff, List, History, Edit2 } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import jsPDF from 'jspdf';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
+// import { GoogleGenerativeAI } from "@google/generative-ai"; // 서버 API 사용으로 주석 처리
 
 const ADMIN_ID = 'ys';
 const ADMIN_PW = 'ys1004!';
@@ -67,8 +68,17 @@ export default function MealAdminView() {
   const [isMobileFoodPanelOpen, setIsMobileFoodPanelOpen] = useState(false);
   const [isKimchiModalOpen, setIsKimchiModalOpen] = useState(false);
   const [isHistoryManageModalOpen, setIsHistoryManageModalOpen] = useState(false);
+  const [isAIModalOpen, setIsAIModalOpen] = useState(false);
+  const [aiInputText, setAiInputText] = useState('');
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [pendingKimchiDrop, setPendingKimchiDrop] = useState<{foodId: string; day: DayOfWeek; time: MealTime} | null>(null);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  
+  // AI 관련 상태
+  const [aiStep, setAiStep] = useState<'input' | 'review'>('input');
+  const [reviewFoods, setReviewFoods] = useState<{name: string, category: Category, origin?: string, checked: boolean}[]>([]);
+  const [extractedMenuData, setExtractedMenuData] = useState<{day: DayOfWeek, time: MealTime, foods: string[]}[]>([]);
+  const [aiImagePreview, setAiImagePreview] = useState<string | null>(null);
 
   const canvasRef = useRef<HTMLDivElement>(null);
 
@@ -134,8 +144,8 @@ export default function MealAdminView() {
           };
           const pa = parse(a.week_title || '');
           const pb = parse(b.week_title || '');
-          if (pa.month !== pb.month) return pb.month - pa.month;
-          return pb.week - pa.week;
+          if (pa.month !== pb.month) return pa.month - pb.month;
+          return pa.week - pb.week;
         });
         
         const historyEntries = sorted.map(h => ({
@@ -443,17 +453,17 @@ export default function MealAdminView() {
       let isOverGridItem = false;
       let overIdx = -1;
 
-      // ID 파싱 (desktop-, mobile-, grid-, grid-mobile-)
+      // ID 파싱 (UUID에 하이픈이 포함될 수 있으므로 뒤에서부터 파싱)
       if (overId.startsWith('grid-mobile-')) {
         targetDay = overParts[2] as DayOfWeek;
         targetTime = overParts[3] as MealTime;
         isOverGridItem = true;
-        overIdx = parseInt(overParts[5]);
+        overIdx = parseInt(overId.split('-').pop() || '-1');
       } else if (overId.startsWith('grid-')) {
         targetDay = overParts[1] as DayOfWeek;
         targetTime = overParts[2] as MealTime;
         isOverGridItem = true;
-        overIdx = parseInt(overParts[4]);
+        overIdx = parseInt(overId.split('-').pop() || '-1');
       } else if (overId.startsWith('mobile-')) {
         targetDay = overParts[1] as DayOfWeek;
         targetTime = overParts[2] as MealTime;
@@ -775,6 +785,10 @@ export default function MealAdminView() {
                                       idx={idx}
                                       total={foods.length}
                                       onRemove={() => removeFood(day, time, food.id)}
+                                      onEdit={() => {
+                                        setEditingFood(food);
+                                        setIsFoodModalOpen(true);
+                                      }}
                                     />
                                   ))}
                                 </SortableContext>
@@ -894,6 +908,10 @@ export default function MealAdminView() {
                                     idx={idx}
                                     total={foods.length}
                                     onRemove={() => removeFood(day, time, food.id)}
+                                    onEdit={() => {
+                                      setEditingFood(food);
+                                      setIsFoodModalOpen(true);
+                                    }}
                                   />
                                 ))}
                               </SortableContext>
@@ -1061,7 +1079,7 @@ export default function MealAdminView() {
               onChange={(e) => {
                 if (e.target.value) {
                   const selected = history.find(h => h.id === Number(e.target.value));
-                  if (selected && confirm(`'${selected.weekTitle}' 식단표를 불러오시겠습니까?\n현재 캔버스에 있는 내용은 덮어씌워집니다.`)) {
+                  if (selected) {
                     setMenus(selected.menus);
                     setSettings(selected.settings);
                     if (selected.todayLunch) setTodayLunch(selected.todayLunch);
@@ -1282,6 +1300,25 @@ export default function MealAdminView() {
               >
                 취소
               </button>
+              <div className="w-full h-px bg-gray-200 my-2"></div>
+              <button 
+                onClick={() => {
+                  const newTitle = `${selectedMonth}월 ${selectedWeek}주차 식단표`;
+                  const isDuplicate = history.some(h => h.weekTitle === newTitle);
+                  if (isDuplicate) {
+                    alert(`이미 '${newTitle}' 데이터가 히스토리에 존재합니다.\n중복된 주차로는 새로 만들 수 없습니다.`);
+                    return;
+                  }
+                  // 설정 변경 및 초기화
+                  setSettings({ ...settings, weekTitle: newTitle });
+                  setMenus([]); 
+                  setIsWeekModalOpen(false);
+                  setIsAIModalOpen(true);
+                }} 
+                className="w-full px-4 py-3 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 font-bold border border-purple-200 flex items-center justify-center gap-2"
+              >
+                ✨ AI 스마트 분석으로 만들기
+              </button>
             </div>
           </div>
         </div>
@@ -1405,6 +1442,255 @@ export default function MealAdminView() {
           </div>
         </div>
       )}
+
+      {/* AI Smart Import Modal */}
+      {isAIModalOpen && (
+        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center">
+          <div className="bg-white rounded-xl shadow-2xl w-[700px] max-w-[95vw] overflow-hidden flex flex-col p-6 max-h-[90vh]">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="font-bold text-xl flex items-center gap-2">
+                <span className="text-purple-600">✨</span> AI 스마트 식단 분석
+              </h2>
+              <button onClick={() => { setIsAIModalOpen(false); setAiStep('input'); }} className="text-gray-400 hover:text-gray-600">✕</button>
+            </div>
+            
+            {aiStep === 'input' ? (
+              <div className="flex-1 overflow-y-auto space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-4">
+                    <label className="block border-2 border-dashed border-gray-300 rounded-xl p-8 text-center cursor-pointer hover:bg-gray-50 transition-colors">
+                      <input 
+                        type="file" 
+                        className="hidden" 
+                        accept="image/*" 
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onload = (ev) => setAiImagePreview(ev.target?.result as string);
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                      />
+                      <Camera className="mx-auto text-gray-400 mb-2" size={32} />
+                      <span className="text-sm font-medium text-gray-600">식단표 이미지 업로드</span>
+                    </label>
+                    {aiImagePreview && (
+                      <div className="relative aspect-video rounded-lg overflow-hidden border">
+                        <img src={aiImagePreview} className="w-full h-full object-contain" />
+                        <button 
+                          onClick={() => setAiImagePreview(null)}
+                          className="absolute top-1 right-1 bg-black/50 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs"
+                        >✕</button>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-sm font-bold text-gray-700 mb-2">또는 텍스트 입력</span>
+                    <textarea 
+                      className="flex-1 border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-purple-500 focus:outline-none font-mono"
+                      placeholder="이미지 없이 텍스트만 분석하려면 여기에 붙여넣으세요..."
+                      value={aiInputText}
+                      onChange={(e) => setAiInputText(e.target.value)}
+                    ></textarea>
+                  </div>
+                </div>
+
+                <button 
+                  onClick={async () => {
+                    if (!aiImagePreview && !aiInputText) return alert('이미지를 업로드하거나 텍스트를 입력해주세요.');
+                    
+                    setIsAnalyzing(true);
+                    try {
+                      const response = await fetch('/api/ai/analyze', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          image: aiImagePreview ? aiImagePreview.split(',')[1] : null,
+                          text: aiInputText
+                        })
+                      });
+
+                      if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error || '분석 중 오류가 발생했습니다.');
+                      }
+
+                      const data = await response.json();
+
+                      // 리뷰 목록 구성
+                      const foodsFromAI = data.all_extracted_foods || data.new_foods || [];
+                      setReviewFoods(foodsFromAI.map((f: any) => {
+                        const name = f.name.trim();
+                        const alreadyExists = foodDb.some(db => db.name.trim() === name);
+                        return {
+                          ...f,
+                          name,
+                          checked: !alreadyExists // DB에 없으면 자동으로 체크
+                        };
+                      }));
+                      setExtractedMenuData(data.menus || []);
+                      setAiStep('review');
+                    } catch (err: any) {
+                      console.error(err);
+                      alert('AI 분석 실패: ' + err.message);
+                    } finally {
+                      setIsAnalyzing(false);
+                    }
+                  }}
+                  disabled={isAnalyzing}
+                  className={`w-full py-4 rounded-xl font-bold text-white shadow-lg transition-all ${isAnalyzing ? 'bg-gray-400' : 'bg-purple-600 hover:bg-purple-700'}`}
+                >
+                  {isAnalyzing ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      AI가 이미지 분석 중...
+                    </span>
+                  ) : 'Gemini AI로 정밀 분석 시작'}
+                </button>
+              </div>
+            ) : (
+              <div className="flex-1 overflow-y-auto flex flex-col">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="font-bold text-gray-700">분석 결과 리뷰 및 확인</h3>
+                  <p className="text-xs text-gray-500">카테고리를 확인하고 추가할 음식을 선택하세요.</p>
+                </div>
+
+                <div className="flex-1 border rounded-lg overflow-y-auto flex flex-col bg-gray-50 min-h-[300px]">
+                  <table className="w-full text-sm border-collapse">
+                    <thead className="bg-gray-100 sticky top-0 z-10">
+                      <tr>
+                        <th className="p-2 border-b w-10"><input type="checkbox" onChange={(e) => setReviewFoods(reviewFoods.map(f => ({...f, checked: e.target.checked})))} checked={reviewFoods.every(f => f.checked)} /></th>
+                        <th className="p-2 border-b text-left">음식 이름</th>
+                        <th className="p-2 border-b text-left w-24">카테고리</th>
+                        <th className="p-2 border-b text-left">원산지</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {reviewFoods.map((food, idx) => (
+                        <tr key={idx} className={`hover:bg-white transition-colors ${!food.checked ? 'opacity-50' : ''}`}>
+                          <td className="p-2 border-b text-center">
+                            <input 
+                              type="checkbox" 
+                              checked={food.checked} 
+                              onChange={(e) => {
+                                const newFoods = [...reviewFoods];
+                                newFoods[idx].checked = e.target.checked;
+                                setReviewFoods(newFoods);
+                              }}
+                            />
+                          </td>
+                          <td className="p-2 border-b">
+                            <input 
+                              type="text" 
+                              className="w-full bg-transparent border-none focus:ring-1 focus:ring-purple-300 rounded px-1"
+                              value={food.name}
+                              onChange={(e) => {
+                                const newFoods = [...reviewFoods];
+                                newFoods[idx].name = e.target.value;
+                                setReviewFoods(newFoods);
+                              }}
+                            />
+                          </td>
+                          <td className="p-2 border-b">
+                            <select 
+                              className="bg-transparent border-none text-xs focus:ring-1 focus:ring-purple-300 rounded"
+                              value={food.category}
+                              onChange={(e) => {
+                                const newFoods = [...reviewFoods];
+                                newFoods[idx].category = e.target.value as Category;
+                                setReviewFoods(newFoods);
+                              }}
+                            >
+                              <option value="밥">밥</option>
+                              <option value="국">국</option>
+                              <option value="반찬">반찬</option>
+                            </select>
+                          </td>
+                          <td className="p-2 border-b">
+                            <input 
+                              type="text" 
+                              className="w-full bg-transparent border-none focus:ring-1 focus:ring-purple-300 rounded px-1 text-xs"
+                              value={food.origin || ''}
+                              onChange={(e) => {
+                                const newFoods = [...reviewFoods];
+                                newFoods[idx].origin = e.target.value;
+                                setReviewFoods(newFoods);
+                              }}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {reviewFoods.length === 0 && (
+                    <div className="p-8 text-center text-gray-400">인식된 새로운 음식이 없습니다.</div>
+                  )}
+                </div>
+
+                <div className="flex gap-2 mt-4">
+                  <button 
+                    onClick={() => setAiStep('input')}
+                    className="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg font-bold hover:bg-gray-300"
+                  >
+                    이전으로
+                  </button>
+                  <button 
+                    onClick={async () => {
+                      setIsAnalyzing(true);
+                      try {
+                        const foodsToInsert = reviewFoods.filter(f => f.checked).map(({checked, ...rest}) => rest);
+                        let finalFoodDb = [...foodDb];
+                        
+                        // 1. 선택한 신규 음식 DB 추가
+                        if (foodsToInsert.length > 0) {
+                          const { data, error } = await supabase.from('food_items').insert(foodsToInsert).select();
+                          if (error) throw error;
+                          if (data) finalFoodDb = [...finalFoodDb, ...data];
+                        }
+                        setFoodDb(finalFoodDb);
+
+                        // 2. 추출된 메뉴 데이터로 식단표 구성
+                        const newMenus: MealEntry[] = extractedMenuData.map(item => {
+                          const foodIds = item.foods.map(name => {
+                            const cleanName = name.includes('(') ? name.split('(')[0].trim() : name.trim();
+                            // 리뷰에서 수정된 이름이 있을 수 있으므로 매칭 주의 (단순화를 위해 원본 이름 기준)
+                            return finalFoodDb.find(f => f.name === cleanName || cleanName.includes(f.name))?.id;
+                          }).filter(Boolean) as string[];
+
+                          return {
+                            id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+                            day: item.day,
+                            time: item.time,
+                            foodIds
+                          };
+                        });
+
+                        setMenus(newMenus);
+                        alert(`DB에 ${foodsToInsert.length}개의 음식을 추가하고 식단표 구성을 완료했습니다!`);
+                        setIsAIModalOpen(false);
+                        setAiStep('input');
+                      } catch (err: any) {
+                        alert('최종 저장 실패: ' + err.message);
+                      } finally {
+                        setIsAnalyzing(false);
+                      }
+                    }}
+                    className="flex-1 py-3 bg-purple-600 text-white rounded-lg font-bold hover:bg-purple-700 shadow-lg"
+                  >
+                    데이터베이스 추가 및 식단표 반영
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Today's Lunch Upload Modal */}
 
       {/* Today's Lunch Upload Modal */}
       {isLunchModalOpen && (
@@ -1551,16 +1837,14 @@ export default function MealAdminView() {
                           key={h.id} 
                           h={h} 
                           onUpdate={(entry) => {
-                            if (confirm(`'${entry.weekTitle}' 식단표를 불러오시겠습니까?`)) {
-                              setMenus(entry.menus);
-                              setSettings({
-                                ...entry.settings,
-                                favoriteFoodIds: settings.favoriteFoodIds,
-                                historyOrder: settings.historyOrder,
-                              });
-                              if (entry.todayLunch) setTodayLunch(entry.todayLunch);
-                              setIsHistoryManageModalOpen(false);
-                            }
+                            setMenus(entry.menus);
+                            setSettings({
+                              ...entry.settings,
+                              favoriteFoodIds: settings.favoriteFoodIds,
+                              historyOrder: settings.historyOrder,
+                            });
+                            if (entry.todayLunch) setTodayLunch(entry.todayLunch);
+                            setIsHistoryManageModalOpen(false);
                           }}
                           onDelete={handleDeleteHistory}
                         />
@@ -1650,10 +1934,11 @@ function SortableHistoryItem({ h, onUpdate, onDelete }: { h: any, onUpdate: (h: 
 }
 
 function DraggableGridFood({ 
-  food, day, time, idx, total, onRemove 
+  food, day, time, idx, total, onRemove, onEdit 
 }: { 
   food: any, day: string, time: string, idx: number, total: number,
-  onRemove: () => void 
+  onRemove: () => void,
+  onEdit: () => void
 }) {
   const itemId = `grid-${day}-${time}-${food.id}-${idx}`;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -1679,10 +1964,15 @@ function DraggableGridFood({
       <div className="font-bold text-gray-800 leading-tight" style={{ wordBreak: 'keep-all', overflowWrap: 'break-word' }}>{food.name}</div>
       {food.origin && <div className="text-[9px] text-gray-500 leading-tight">({food.origin})</div>}
       
-      {/* 삭제 버튼 패널 */}
-      <div className="absolute -right-1 -top-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 shadow-sm rounded border border-gray-200 p-0.5 z-10">
+      {/* 액션 버튼 패널 */}
+      <div className="absolute -right-1 -top-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 shadow-sm rounded border border-gray-200 p-0.5 z-10 flex gap-0.5">
         <button 
-          onPointerDown={(e) => { e.stopPropagation(); onRemove(); }}
+          onPointerDown={(e) => { e.stopPropagation(); onEdit?.(); }}
+          className="bg-blue-500 text-white rounded w-4 h-4 flex items-center justify-center text-[10px]"
+          title="수정"
+        ><Edit2 size={10} /></button>
+        <button 
+          onPointerDown={(e) => { e.stopPropagation(); onRemove?.(); }}
           className="bg-red-500 text-white rounded w-4 h-4 flex items-center justify-center text-[10px]"
           title="삭제"
         >✕</button>
@@ -1692,10 +1982,11 @@ function DraggableGridFood({
 }
 
 function DraggableGridFoodMobile({ 
-  food, day, time, idx, total, onRemove 
+  food, day, time, idx, total, onRemove, onEdit 
 }: { 
   food: any, day: string, time: string, idx: number, total: number,
-  onRemove: () => void 
+  onRemove: () => void,
+  onEdit: () => void
 }) {
   const itemId = `grid-mobile-${day}-${time}-${food.id}-${idx}`;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -1718,7 +2009,12 @@ function DraggableGridFoodMobile({
       {...attributes}
       className={`text-[9px] text-center relative group w-full flex items-center justify-center gap-0.5 hover:bg-orange-50 hover:ring-1 hover:ring-orange-200 rounded py-0.5 transition-all cursor-grab active:cursor-grabbing ${isDragging ? 'z-50 opacity-50 shadow-lg' : ''}`}
     >
-      <span className="font-bold text-gray-800 leading-tight">{food.name}</span>
+      <span 
+        className="font-bold text-gray-800 leading-tight cursor-pointer"
+        onClick={(e) => { e.stopPropagation(); onEdit(); }}
+      >
+        {food.name}
+      </span>
       <button 
         onPointerDown={(e) => { e.stopPropagation(); onRemove(); }}
         className="text-red-400 text-[8px] font-bold"
