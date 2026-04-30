@@ -3,13 +3,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { dummyFoodItems, dummyWeeklyMenus, dummySettings, dummyTodayLunch } from '@/lib/dummyData';
 import { DayOfWeek, MealTime } from '@/lib/types';
+import { DAYS, getWeekDatesFromTitle } from '@/lib/dateUtils';
 import { BellRing, ChevronLeft, ChevronRight, Camera, Download, Settings, CalendarDays, List } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import jsPDF from 'jspdf';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 
-const DAYS: DayOfWeek[] = ['월', '화', '수', '목', '금', '토', '일'];
+
 const TIMES: MealTime[] = ['아침', '점심', '저녁'];
 
 export default function MealUserView() {
@@ -72,10 +73,31 @@ export default function MealUserView() {
         
         setHistory(historyEntries);
 
-        // 현재 선택된 주차 인덱스 설정
-        if (stateData) {
+        // 오늘 날짜가 포함된 주차 찾기
+        const today = new Date();
+        const todayIdx = historyEntries.findIndex((h: any) => {
+          const dates = getWeekDatesFromTitle(h.weekTitle);
+          return dates.some(d => 
+            d.getDate() === today.getDate() && 
+            d.getMonth() === today.getMonth() && 
+            d.getFullYear() === today.getFullYear()
+          );
+        });
+
+        if (todayIdx >= 0) {
+          // 오늘 날짜 주차가 히스토리에 있으면 해당 데이터로 설정
+          const entry = historyEntries[todayIdx];
+          setCurrentHistoryIndex(todayIdx);
+          setMenus(entry.menus);
+          setSettings(entry.settings);
+          if (entry.todayLunch) setTodayLunch(entry.todayLunch);
+        } else if (stateData) {
+          // 없으면 기존처럼 current_meal_state 사용
           const idx = historyEntries.findIndex((h: any) => h.weekTitle === stateData.settings.weekTitle);
           setCurrentHistoryIndex(idx >= 0 ? idx : historyEntries.length - 1);
+          setMenus(stateData.menus);
+          setSettings(stateData.settings);
+          setTodayLunch(stateData.today_lunch);
         }
       }
       
@@ -124,61 +146,7 @@ export default function MealUserView() {
     }
   };
 
-  // Calculate week dates based on weekTitle (e.g. "5월 1주차 식단표")
-  const getWeekDatesFromTitle = (title: string) => {
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    
-    const match = title.match(/(\d+)\s*월\s*(\d+)\s*주/);
-    if (!match) {
-      // fallback: 현재 주 기준
-      const dayOfWeek = now.getDay();
-      const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-      const monday = new Date(now);
-      monday.setDate(now.getDate() + mondayOffset);
-      return DAYS.map((_, i) => {
-        const d = new Date(monday);
-        d.setDate(monday.getDate() + i);
-        return d;
-      });
-    }
 
-    const targetMonth = parseInt(match[1]); // 1-indexed
-    const targetWeek = parseInt(match[2]);   // 1-indexed
-
-    // 해당 월의 1일부터 시작하여 N주차 월요일을 구함
-    const firstDay = new Date(currentYear, targetMonth - 1, 1);
-    const firstDayOfWeek = firstDay.getDay(); // 0=Sun
-    // 첫 번째 월요일 offset: 1일이 월요일(1)이면 0, 화(2)이면 -1, ... 일(0)이면 1
-    let firstMondayOffset: number;
-    if (firstDayOfWeek === 0) {
-      firstMondayOffset = 1; // 일요일이면 다음 날이 월요일
-    } else if (firstDayOfWeek === 1) {
-      firstMondayOffset = 0; // 이미 월요일
-    } else {
-      firstMondayOffset = 8 - firstDayOfWeek; // 다음 주 월요일
-    }
-
-    // 1주차는 해당 월에 속하는 첫 번째 월요일이 있는 주
-    // 만약 1일이 월~목이면 그 주가 1주차, 금~일이면 다음 주가 1주차
-    let week1Monday: Date;
-    if (firstDayOfWeek >= 1 && firstDayOfWeek <= 4) {
-      // 월~목: 그 주의 월요일 (1일이 속한 주)
-      week1Monday = new Date(currentYear, targetMonth - 1, 1 - (firstDayOfWeek - 1));
-    } else {
-      // 금~일: 다음 주 월요일
-      week1Monday = new Date(currentYear, targetMonth - 1, 1 + firstMondayOffset);
-    }
-
-    const targetMonday = new Date(week1Monday);
-    targetMonday.setDate(week1Monday.getDate() + (targetWeek - 1) * 7);
-
-    return DAYS.map((_, i) => {
-      const d = new Date(targetMonday);
-      d.setDate(targetMonday.getDate() + i);
-      return d;
-    });
-  };
 
   const weekDates = getWeekDatesFromTitle(settings.weekTitle || '');
   const today = new Date();
