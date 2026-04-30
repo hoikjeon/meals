@@ -435,21 +435,56 @@ export default function MealAdminView() {
       const foodId = isFromGrid ? active.data.current?.foodId : (active.id as string);
       const food = foodDb.find(f => f.id === foodId);
       
-      const parts = (over.id as string).split('-');
-      const targetDay = parts[1] as DayOfWeek;
-      const targetTime = parts[2] as MealTime;
+      const overId = over.id as string;
+      const overParts = overId.split('-');
+      
+      let targetDay: DayOfWeek;
+      let targetTime: MealTime;
+      let isOverGridItem = false;
+      let overIdx = -1;
+
+      // ID 파싱 (desktop-, mobile-, grid-, grid-mobile-)
+      if (overId.startsWith('grid-mobile-')) {
+        targetDay = overParts[2] as DayOfWeek;
+        targetTime = overParts[3] as MealTime;
+        isOverGridItem = true;
+        overIdx = parseInt(overParts[5]);
+      } else if (overId.startsWith('grid-')) {
+        targetDay = overParts[1] as DayOfWeek;
+        targetTime = overParts[2] as MealTime;
+        isOverGridItem = true;
+        overIdx = parseInt(overParts[4]);
+      } else if (overId.startsWith('mobile-')) {
+        targetDay = overParts[1] as DayOfWeek;
+        targetTime = overParts[2] as MealTime;
+      } else {
+        // desktop-
+        targetDay = overParts[1] as DayOfWeek;
+        targetTime = overParts[2] as MealTime;
+      }
 
       // 그리드 내에서 이동하는 경우
       if (isFromGrid) {
         const sourceDay = active.data.current?.day as DayOfWeek;
         const sourceTime = active.data.current?.time as MealTime;
+        const sourceIdx = active.data.current?.idx;
         
-        // 같은 칸 안에서 드롭한 경우 무시
+        // 같은 칸 안에서 드롭한 경우 (정렬)
         if (sourceDay === targetDay && sourceTime === targetTime) {
+          if (isOverGridItem && sourceIdx !== overIdx) {
+            setMenus(prev => {
+              const entryIdx = prev.findIndex(m => m.day === sourceDay && m.time === sourceTime);
+              if (entryIdx === -1) return prev;
+              const newMenus = [...prev];
+              const newFoodIds = arrayMove(newMenus[entryIdx].foodIds, sourceIdx, overIdx);
+              newMenus[entryIdx] = { ...newMenus[entryIdx], foodIds: newFoodIds };
+              return newMenus;
+            });
+          }
           return;
         }
         
-        // 기존 칸에서 삭제 후 새 칸에 추가
+        // 다른 칸으로 이동
         removeFood(sourceDay, sourceTime, foodId);
         addFoodToCell(foodId, targetDay, targetTime);
         return;
@@ -727,19 +762,22 @@ export default function MealAdminView() {
                           <td key={`m-${day}-${time}`} className="border border-gray-200 p-1 align-top h-[80px] w-[12%]">
                             <DroppableCell id={`mobile-${day}-${time}`}>
                               <div className="min-h-[70px] flex flex-col gap-1 items-center">
-                                {foods.map((food, idx) => food && (
-                                  <DraggableGridFoodMobile
-                                    key={food.id}
-                                    food={food}
-                                    day={day}
-                                    time={time}
-                                    idx={idx}
-                                    total={foods.length}
-                                    onRemove={() => removeFood(day, time, food.id)}
-                                    onMoveUp={() => moveFood(day, time, food.id, 'up')}
-                                    onMoveDown={() => moveFood(day, time, food.id, 'down')}
-                                  />
-                                ))}
+                                <SortableContext 
+                                  items={foods.map((f, i) => `grid-mobile-${day}-${time}-${f.id}-${i}`)} 
+                                  strategy={verticalListSortingStrategy}
+                                >
+                                  {foods.map((food, idx) => food && (
+                                    <DraggableGridFoodMobile
+                                      key={`${food.id}-${idx}`}
+                                      food={food}
+                                      day={day}
+                                      time={time}
+                                      idx={idx}
+                                      total={foods.length}
+                                      onRemove={() => removeFood(day, time, food.id)}
+                                    />
+                                  ))}
+                                </SortableContext>
                               </div>
                             </DroppableCell>
                           </td>
@@ -843,19 +881,22 @@ export default function MealAdminView() {
                         <td key={`${day}-${time}`} className="border border-gray-400 p-0 align-top relative h-[160px] overflow-hidden">
                           <DroppableCell id={`desktop-${day}-${time}`}>
                             <div className="min-h-[160px] h-full p-2 flex flex-col gap-2 items-center justify-start overflow-hidden">
-                              {foods.map((food, idx) => food && (
-                                <DraggableGridFood 
-                                  key={food.id}
-                                  food={food}
-                                  day={day}
-                                  time={time}
-                                  idx={idx}
-                                  total={foods.length}
-                                  onRemove={() => removeFood(day, time, food.id)}
-                                  onMoveUp={() => moveFood(day, time, food.id, 'up')}
-                                  onMoveDown={() => moveFood(day, time, food.id, 'down')}
-                                />
-                              ))}
+                              <SortableContext 
+                                items={foods.map((f, i) => `grid-${day}-${time}-${f.id}-${i}`)} 
+                                strategy={verticalListSortingStrategy}
+                              >
+                                {foods.map((food, idx) => food && (
+                                  <DraggableGridFood 
+                                    key={`${food.id}-${idx}`}
+                                    food={food}
+                                    day={day}
+                                    time={time}
+                                    idx={idx}
+                                    total={foods.length}
+                                    onRemove={() => removeFood(day, time, food.id)}
+                                  />
+                                ))}
+                              </SortableContext>
                             </div>
                           </DroppableCell>
                         </td>
@@ -1597,21 +1638,23 @@ function SortableHistoryItem({ h, onUpdate, onDelete }: { h: any, onUpdate: (h: 
 }
 
 function DraggableGridFood({ 
-  food, day, time, idx, total, onRemove, onMoveUp, onMoveDown 
+  food, day, time, idx, total, onRemove 
 }: { 
   food: any, day: string, time: string, idx: number, total: number,
-  onRemove: () => void, onMoveUp: () => void, onMoveDown: () => void 
+  onRemove: () => void 
 }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: `grid-${day}-${time}-${food.id}-${idx}`,
+  const itemId = `grid-${day}-${time}-${food.id}-${idx}`;
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: itemId,
     data: { source: 'grid', day, time, foodId: food.id, idx }
   });
   
-  const style = transform ? {
+  const style = {
     transform: CSS.Translate.toString(transform),
+    transition,
     zIndex: isDragging ? 100 : 0,
     opacity: isDragging ? 0.5 : 1,
-  } : undefined;
+  };
 
   return (
     <div 
@@ -1624,48 +1667,36 @@ function DraggableGridFood({
       <div className="font-bold text-gray-800 leading-tight" style={{ wordBreak: 'keep-all', overflowWrap: 'break-word' }}>{food.name}</div>
       {food.origin && <div className="text-[9px] text-gray-500 leading-tight">({food.origin})</div>}
       
-      {/* 순서 변경 및 삭제 버튼 패널 */}
-      <div className="absolute -right-1 -top-1 flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 shadow-sm rounded border border-gray-200 p-0.5 z-10">
+      {/* 삭제 버튼 패널 */}
+      <div className="absolute -right-1 -top-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 shadow-sm rounded border border-gray-200 p-0.5 z-10">
         <button 
           onPointerDown={(e) => { e.stopPropagation(); onRemove(); }}
           className="bg-red-500 text-white rounded w-4 h-4 flex items-center justify-center text-[10px]"
           title="삭제"
         >✕</button>
-        {idx > 0 && (
-          <button 
-            onPointerDown={(e) => { e.stopPropagation(); onMoveUp(); }}
-            className="bg-blue-500 text-white rounded w-4 h-4 flex items-center justify-center text-[10px]"
-            title="위로"
-          >▲</button>
-        )}
-        {idx < total - 1 && (
-          <button 
-            onPointerDown={(e) => { e.stopPropagation(); onMoveDown(); }}
-            className="bg-blue-500 text-white rounded w-4 h-4 flex items-center justify-center text-[10px]"
-            title="아래로"
-          >▼</button>
-        )}
       </div>
     </div>
   );
 }
 
 function DraggableGridFoodMobile({ 
-  food, day, time, idx, total, onRemove, onMoveUp, onMoveDown 
+  food, day, time, idx, total, onRemove 
 }: { 
   food: any, day: string, time: string, idx: number, total: number,
-  onRemove: () => void, onMoveUp: () => void, onMoveDown: () => void 
+  onRemove: () => void 
 }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: `grid-mobile-${day}-${time}-${food.id}-${idx}`,
+  const itemId = `grid-mobile-${day}-${time}-${food.id}-${idx}`;
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: itemId,
     data: { source: 'grid', day, time, foodId: food.id, idx }
   });
   
-  const style = transform ? {
+  const style = {
     transform: CSS.Translate.toString(transform),
+    transition,
     zIndex: isDragging ? 100 : 0,
     opacity: isDragging ? 0.5 : 1,
-  } : undefined;
+  };
 
   return (
     <div 
@@ -1675,10 +1706,6 @@ function DraggableGridFoodMobile({
       {...attributes}
       className={`text-[9px] text-center relative group w-full flex items-center justify-center gap-0.5 hover:bg-orange-50 hover:ring-1 hover:ring-orange-200 rounded py-0.5 transition-all cursor-grab active:cursor-grabbing ${isDragging ? 'z-50 opacity-50 shadow-lg' : ''}`}
     >
-      <div className="flex flex-col">
-        {idx > 0 && <button onPointerDown={(e) => { e.stopPropagation(); onMoveUp(); }} className="text-[7px] leading-none text-blue-400 hover:text-blue-600">▲</button>}
-        {idx < total - 1 && <button onPointerDown={(e) => { e.stopPropagation(); onMoveDown(); }} className="text-[7px] leading-none text-blue-400 hover:text-blue-600">▼</button>}
-      </div>
       <span className="font-bold text-gray-800 leading-tight">{food.name}</span>
       <button 
         onPointerDown={(e) => { e.stopPropagation(); onRemove(); }}
