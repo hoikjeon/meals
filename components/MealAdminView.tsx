@@ -137,6 +137,17 @@ export default function MealAdminView() {
     fetchData();
   }, []);
 
+  // 3분마다 자동 저장 (180,000ms)
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const interval = setInterval(() => {
+      handleSave(false);
+    }, 180000);
+
+    return () => clearInterval(interval);
+  }, [isAuthenticated, menus, settings, todayLunch]);
+
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (loginId === ADMIN_ID && loginPw === ADMIN_PW) {
@@ -216,7 +227,8 @@ export default function MealAdminView() {
     );
   }
 
-  const handleSave = async () => {
+  const handleSave = async (options?: boolean | React.MouseEvent) => {
+    const showNotification = typeof options === 'boolean' ? options : true;
     // 1. 현재 상태 업데이트 (upsert)
     const { error: stateError } = await supabase
       .from('current_meal_state')
@@ -230,7 +242,14 @@ export default function MealAdminView() {
 
     if (stateError) {
       console.error('Error saving state:', stateError);
-      return alert('저장 실패: ' + (stateError?.message || '알 수 없는 오류'));
+      if (showNotification) alert('저장 실패: ' + (stateError?.message || '알 수 없는 오류'));
+      return;
+    }
+
+    // 자동 저장인 경우 히스토리 추가는 건너뜀 (DB 비대화 방지)
+    if (!showNotification) {
+      console.log('Auto-saved at:', new Date().toLocaleTimeString());
+      return;
     }
 
     // 2. 히스토리에 추가
