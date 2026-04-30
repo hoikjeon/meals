@@ -65,6 +65,7 @@ export default function MealAdminView() {
   const [isMobileFoodPanelOpen, setIsMobileFoodPanelOpen] = useState(false);
   const [isKimchiModalOpen, setIsKimchiModalOpen] = useState(false);
   const [pendingKimchiDrop, setPendingKimchiDrop] = useState<{foodId: string; day: DayOfWeek; time: MealTime} | null>(null);
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
 
   const canvasRef = useRef<HTMLDivElement>(null);
 
@@ -329,11 +330,23 @@ export default function MealAdminView() {
       const existingEntryIndex = prev.findIndex(m => m.day === day && m.time === time);
       if (existingEntryIndex >= 0) {
         const newMenus = [...prev];
-        const currentFoods = newMenus[existingEntryIndex].foodIds;
+        const currentFoods = [...newMenus[existingEntryIndex].foodIds];
         if (!currentFoods.includes(foodId)) {
+          const food = foodDb.find(f => f.id === foodId);
+          if (food?.name === '배추김치') {
+            currentFoods.push(foodId); // 배추김치는 맨 뒤에 추가
+          } else {
+            // 다른 음식은 배추김치 앞, 혹은 맨 뒤에 추가
+            const kimchiIdx = currentFoods.findIndex(id => foodDb.find(f => f.id === id)?.name === '배추김치');
+            if (kimchiIdx >= 0) {
+              currentFoods.splice(kimchiIdx, 0, foodId);
+            } else {
+              currentFoods.push(foodId);
+            }
+          }
           newMenus[existingEntryIndex] = {
             ...newMenus[existingEntryIndex],
-            foodIds: [...currentFoods, foodId]
+            foodIds: currentFoods
           };
         }
         return newMenus;
@@ -377,6 +390,26 @@ export default function MealAdminView() {
         return newMenus;
       }
       return prev;
+    });
+  };
+
+  const moveFood = (day: DayOfWeek, time: MealTime, foodId: string, direction: 'up' | 'down') => {
+    setMenus((prev) => {
+      const entryIdx = prev.findIndex(m => m.day === day && m.time === time);
+      if (entryIdx === -1) return prev;
+
+      const newMenus = [...prev];
+      const newFoodIds = [...newMenus[entryIdx].foodIds];
+      const idx = newFoodIds.indexOf(foodId);
+      if (idx === -1) return prev;
+
+      const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+      if (targetIdx < 0 || targetIdx >= newFoodIds.length) return prev;
+
+      // Swap
+      [newFoodIds[idx], newFoodIds[targetIdx]] = [newFoodIds[targetIdx], newFoodIds[idx]];
+      newMenus[entryIdx] = { ...newMenus[entryIdx], foodIds: newFoodIds };
+      return newMenus;
     });
   };
 
@@ -453,8 +486,30 @@ export default function MealAdminView() {
 
   const activeFoodItem = foodDb.find(f => f.id === activeId);
 
+  const handleToggleFavorite = async (food: FoodItem) => {
+    const currentFavs = settings.favoriteFoodIds || [];
+    const newFavs = currentFavs.includes(food.id)
+      ? currentFavs.filter(id => id !== food.id)
+      : [...currentFavs, food.id];
+    
+    const newSettings = { ...settings, favoriteFoodIds: newFavs };
+    setSettings(newSettings);
+    
+    // DB에 즉시 저장
+    supabase.from('current_meal_state').upsert({
+      id: 1,
+      menus,
+      settings: newSettings,
+      today_lunch: todayLunch,
+      updated_at: new Date().toISOString()
+    }).then(({ error }) => {
+      if (error) console.error('Error saving favorite:', error);
+    });
+  };
+
   const filteredFoods = foodDb.filter(f => {
     if (f.category !== activeTab) return false;
+    if (showFavoritesOnly && !(settings.favoriteFoodIds || []).includes(f.id)) return false;
     if (searchQuery && !f.name.includes(searchQuery)) return false;
     if (selectedChosung !== '전체') {
       const chosung = getChosungGroup(f.name.charAt(0));
@@ -535,21 +590,21 @@ export default function MealAdminView() {
                       <td className="border border-gray-200 p-1 text-center font-bold bg-gray-50 text-[10px]">{time}</td>
                       {DAYS.map(day => {
                         const menuEntry = menus.find(m => m.day === day && m.time === time);
-                        const rawFoods = menuEntry ? menuEntry.foodIds.map(id => foodDb.find(f => f.id === id)!).filter(Boolean) : [];
-                        const foods = [
-                          ...rawFoods.filter(f => f && f.name !== '배추김치'),
-                          ...rawFoods.filter(f => f && f.name === '배추김치')
-                        ];
+                        const foods = menuEntry ? menuEntry.foodIds.map(id => foodDb.find(f => f.id === id)!).filter(Boolean) : [];
                         return (
                           <td key={`m-${day}-${time}`} className="border border-gray-200 p-1 align-top h-[80px] w-[12%]">
                             <DroppableCell id={`${day}-${time}`}>
                               <div className="min-h-[70px] flex flex-col gap-1 items-center">
-                                {foods.map(food => food && (
-                                  <div key={food.id} className="text-[9px] text-center relative group w-full">
+                                {foods.map((food, idx) => food && (
+                                  <div key={food.id} className="text-[9px] text-center relative group w-full flex items-center justify-center gap-0.5 hover:bg-orange-50 hover:ring-1 hover:ring-orange-200 rounded py-0.5 transition-all cursor-pointer">
+                                    <div className="flex flex-col">
+                                      {idx > 0 && <button onClick={(e) => { e.stopPropagation(); moveFood(day, time, food.id, 'up'); }} className="text-[7px] leading-none text-blue-400 hover:text-blue-600">▲</button>}
+                                      {idx < foods.length - 1 && <button onClick={(e) => { e.stopPropagation(); moveFood(day, time, food.id, 'down'); }} className="text-[7px] leading-none text-blue-400 hover:text-blue-600">▼</button>}
+                                    </div>
                                     <span className="font-bold text-gray-800 leading-tight">{food.name}</span>
                                     <button 
-                                      onClick={() => removeFood(day, time, food.id)}
-                                      className="ml-0.5 text-red-400 text-[8px] font-bold"
+                                      onClick={(e) => { e.stopPropagation(); removeFood(day, time, food.id); }}
+                                      className="text-red-400 text-[8px] font-bold"
                                     >✕</button>
                                   </div>
                                 ))}
@@ -648,26 +703,39 @@ export default function MealAdminView() {
                     </td>
                     {DAYS.map(day => {
                       const menuEntry = menus.find(m => m.day === day && m.time === time);
-                      const rawFoods = menuEntry ? menuEntry.foodIds.map(id => foodDb.find(f => f.id === id)!).filter(Boolean) : [];
-                      const foods = [
-                        ...rawFoods.filter(f => f && f.name !== '배추김치'),
-                        ...rawFoods.filter(f => f && f.name === '배추김치')
-                      ];
+                      const foods = menuEntry ? menuEntry.foodIds.map(id => foodDb.find(f => f.id === id)!).filter(Boolean) : [];
                       
                       return (
                         <td key={`${day}-${time}`} className="border border-gray-400 p-0 align-top relative h-[160px] w-[13%]">
                           <DroppableCell id={`${day}-${time}`}>
-                            <div className="min-h-[160px] h-full p-2 flex flex-col gap-2 items-center justify-start">
-                              {foods.map(food => food && (
-                                <div key={food.id} className="text-[11px] text-center relative group w-full flex flex-col gap-0.5">
+                            <div className="min-h-[160px] h-full p-2 flex flex-col gap-2 items-center justify-start overflow-hidden">
+                              {foods.map((food, idx) => food && (
+                                <div key={food.id} className="text-[11px] text-center relative group w-full flex flex-col items-center hover:bg-orange-50 hover:ring-1 hover:ring-orange-200 rounded p-1 transition-all cursor-pointer">
                                   <div className="font-bold text-gray-800 leading-tight break-keep">{food.name}</div>
                                   {food.origin && <div className="text-[9px] text-gray-500 leading-tight">({food.origin})</div>}
-                                  <button 
-                                    onClick={() => removeFood(day, time, food.id)}
-                                    className="absolute -right-1 -top-1 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
-                                  >
-                                    ✕
-                                  </button>
+                                  
+                                  {/* 순서 변경 및 삭제 버튼 패널 */}
+                                  <div className="absolute -right-1 -top-1 flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 shadow-sm rounded border border-gray-200 p-0.5 z-10">
+                                    <button 
+                                      onClick={(e) => { e.stopPropagation(); removeFood(day, time, food.id); }}
+                                      className="bg-red-500 text-white rounded w-4 h-4 flex items-center justify-center text-[10px]"
+                                      title="삭제"
+                                    >✕</button>
+                                    {idx > 0 && (
+                                      <button 
+                                        onClick={(e) => { e.stopPropagation(); moveFood(day, time, food.id, 'up'); }}
+                                        className="bg-blue-500 text-white rounded w-4 h-4 flex items-center justify-center text-[10px]"
+                                        title="위로"
+                                      >▲</button>
+                                    )}
+                                    {idx < foods.length - 1 && (
+                                      <button 
+                                        onClick={(e) => { e.stopPropagation(); moveFood(day, time, food.id, 'down'); }}
+                                        className="bg-blue-500 text-white rounded w-4 h-4 flex items-center justify-center text-[10px]"
+                                        title="아래로"
+                                      >▼</button>
+                                    )}
+                                  </div>
                                 </div>
                               ))}
                             </div>
@@ -680,9 +748,30 @@ export default function MealAdminView() {
               </tbody>
             </table>
 
-            <div className="mt-6 bg-white bg-opacity-90 p-4 rounded border border-gray-200 flex-1">
+            <div className="mt-6 bg-white bg-opacity-90 p-4 rounded border border-gray-200 flex-1 flex flex-col">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-xs font-bold text-gray-500">원산지 정보</span>
+                <button 
+                  onClick={async () => {
+                    const { error } = await supabase
+                      .from('current_meal_state')
+                      .upsert({
+                        id: 1,
+                        menus,
+                        settings, // settings.originText가 포함되어 있음
+                        today_lunch: todayLunch,
+                        updated_at: new Date().toISOString()
+                      });
+                    if (!error) alert('원산지 정보가 저장되었습니다. 앞으로 새 식단표 작성 시에도 이 내용이 유지됩니다.');
+                    else alert('저장 실패: ' + error.message);
+                  }}
+                  className="text-[10px] bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-1 rounded border border-gray-300 transition-colors font-bold"
+                >
+                  원산지 정보 저장
+                </button>
+              </div>
               <textarea 
-                className="w-full h-full min-h-[200px] text-xs p-2 border-none resize-none focus:ring-0 bg-transparent"
+                className="w-full h-full min-h-[200px] text-xs p-2 border-none resize-none focus:ring-0 bg-transparent flex-1"
                 value={settings.originText}
                 onChange={(e) => setSettings({...settings, originText: e.target.value})}
               />
@@ -731,7 +820,14 @@ export default function MealAdminView() {
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          <div className="flex flex-wrap gap-1 mb-1">
+          <div className="flex flex-wrap gap-1 mb-1 items-center">
+            <button
+              onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
+              className={`text-[10px] px-2 py-0.5 rounded transition-colors border flex items-center gap-1 ${showFavoritesOnly ? 'bg-yellow-400 text-yellow-900 font-bold border-yellow-500' : 'bg-white text-gray-500 border-gray-300 hover:bg-gray-50'}`}
+            >
+              ★ 즐겨찾기
+            </button>
+            <div className="w-[1px] h-3 bg-gray-300 mx-1"></div>
             {CHOSUNGS.map(cho => (
               <button
                 key={cho}
@@ -749,6 +845,8 @@ export default function MealAdminView() {
               <DraggableFoodItem 
                 key={food.id} 
                 food={food} 
+                isFavorite={(settings.favoriteFoodIds || []).includes(food.id)}
+                onToggleFavorite={handleToggleFavorite}
                 onEdit={(f) => {
                   setEditingFood(f);
                   setIsFoodModalOpen(true);

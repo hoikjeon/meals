@@ -22,6 +22,7 @@ export interface Settings {
   originText: string;
   backgroundImageUrl: string | null;
   backgroundColor: string;
+  favoriteFoodIds?: string[];
 }
 
 export interface TodayLunch {
