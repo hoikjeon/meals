@@ -653,20 +653,37 @@ export default function MealAdminView() {
         setTodayLunch(updated);
         
         // Supabase에 즉시 반영
-        supabase.from('current_meal_state').upsert({
-          id: 1,
-          menus,
-          settings,
-          today_lunch: updated,
-          updated_at: new Date().toISOString()
-        }).then(({ error }) => {
-          if (!error) {
-            alert('오늘의 점심 사진이 자동으로 저장되었습니다.');
-          } else {
-            console.error('Error auto-saving lunch image:', error);
-            alert('사진 저장 중 오류가 발생했습니다.');
+        const saveState = async () => {
+          // 1. 현재 상태 업데이트
+          const { error: stateError } = await supabase.from('current_meal_state').upsert({
+            id: 1,
+            menus,
+            settings,
+            today_lunch: updated,
+            updated_at: new Date().toISOString()
+          });
+
+          if (stateError) throw stateError;
+
+          // 2. 히스토리에도 동일하게 반영 (사용자 화면 동기화)
+          const existing = history.find(h => h.weekTitle === settings.weekTitle);
+          if (existing) {
+            const { error: historyError } = await supabase
+              .from('meal_history')
+              .update({ today_lunch: updated })
+              .eq('id', existing.id);
+            if (historyError) console.warn('History sync failed:', historyError);
           }
-        });
+        };
+
+        saveState()
+          .then(() => {
+            alert('오늘의 점심 사진이 자동으로 저장되었습니다.');
+          })
+          .catch((err) => {
+            console.error('Error auto-saving lunch image:', err);
+            alert('사진 저장 중 오류가 발생했습니다.');
+          });
       };
       reader.readAsDataURL(file);
     }
