@@ -660,7 +660,12 @@ export default function MealAdminView() {
           today_lunch: updated,
           updated_at: new Date().toISOString()
         }).then(({ error }) => {
-          if (error) console.error('Error auto-saving lunch image:', error);
+          if (!error) {
+            alert('오늘의 점심 사진이 자동으로 저장되었습니다.');
+          } else {
+            console.error('Error auto-saving lunch image:', error);
+            alert('사진 저장 중 오류가 발생했습니다.');
+          }
         });
       };
       reader.readAsDataURL(file);
@@ -1182,6 +1187,21 @@ export default function MealAdminView() {
         )}
       </div>
 
+      {/* 모바일: 오늘의 점심 업로드 플로팅 버튼 */}
+      <label 
+        className="md:hidden fixed bottom-24 right-6 w-14 h-14 bg-orange-500 text-white rounded-full shadow-lg flex items-center justify-center z-30 hover:bg-orange-600 active:scale-95 transition-all cursor-pointer"
+        title="오늘의 점심 사진 찍기"
+      >
+        <Camera size={28} />
+        <input 
+          type="file" 
+          className="hidden" 
+          accept="image/*" 
+          capture="environment" 
+          onChange={handleLunchImageUpload} 
+        />
+      </label>
+
       {/* 모바일: 음식DB 플로팅 버튼 */}
       <button
         onClick={() => setIsMobileFoodPanelOpen(true)}
@@ -1257,13 +1277,13 @@ export default function MealAdminView() {
                 />
               ))}
             </div>
-            {/* 모바일 점심 업로드 + 히스토리 */}
+            {/* 모바일 히스토리 */}
             <div className="p-3 border-t border-gray-200">
               <button 
-                onClick={() => { setIsLunchModalOpen(true); setIsMobileFoodPanelOpen(false); }}
-                className="w-full bg-orange-500 text-white py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 shadow-sm"
+                onClick={() => { setIsHistoryManageModalOpen(true); setIsMobileFoodPanelOpen(false); }}
+                className="w-full bg-gray-600 text-white py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 shadow-sm"
               >
-                <Camera size={18} /> 오늘의 점심 사진 업로드
+                <History size={18} /> 과거 식단 기록 관리
               </button>
             </div>
           </div>
