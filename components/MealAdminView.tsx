@@ -32,11 +32,10 @@ const getChosungGroup = (char: string) => {
 };
 
 const PRESET_BACKGROUNDS = [
-  { id: 'bg1', name: '단색 (기본 노랑)', url: null, color: '#FFF6E5' },
-  { id: 'bg2', name: '봄꽃 (분홍)', url: 'https://images.unsplash.com/photo-1490750967868-88aa4486c946?q=80&w=800&auto=format&fit=crop', color: '#fff' },
-  { id: 'bg3', name: '자연 (초록)', url: 'https://images.unsplash.com/photo-1518531933037-91b2f5f229cc?q=80&w=800&auto=format&fit=crop', color: '#fff' },
-  { id: 'bg4', name: '가을 (단풍)', url: 'https://images.unsplash.com/photo-1507371341162-763b5e419408?q=80&w=800&auto=format&fit=crop', color: '#fff' },
-  { id: 'bg5', name: '겨울 (눈)', url: 'https://images.unsplash.com/photo-1478265409131-1f65c88f965c?q=80&w=800&auto=format&fit=crop', color: '#fff' },
+  { id: 'bg1', name: '여름 1', url: '/images/summer1.jpg', color: '#fff' },
+  { id: 'bg2', name: '여름 2', url: '/images/summer2.jpg', color: '#fff' },
+  { id: 'bg3', name: '여름 3', url: '/images/summer3.jpg', color: '#fff' },
+  { id: 'bg4', name: '여름 4', url: '/images/summer4.jpg', color: '#fff' },
 ];
 
 export default function MealAdminView() {

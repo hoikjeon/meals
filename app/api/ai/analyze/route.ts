@@ -7,7 +7,6 @@ export async function POST(req: Request) {
   try {
     const { image, text } = await req.json();
 
-    // 모델 설정 (사용자 요청: Gemini 3 Flash Preview)
     const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
 
     const prompt = `Analyze this hospital weekly meal plan image or text and provide a structured JSON response. 
