@@ -313,7 +313,11 @@ export default function MealUserView() {
                 const menuEntry = menus.find(m => m.day === day && m.time === time);
                 const foods = menuEntry ? menuEntry.foodIds.map(id => foodDb.find(f => f.id === id)!).filter(Boolean) : [];
                 return (
-                  <div key={time} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                  <div key={time} className={`bg-white rounded-xl overflow-hidden ${
+                    time === '점심'
+                      ? 'border border-orange-200 shadow-md shadow-orange-100'
+                      : 'border border-gray-200 shadow-sm'
+                  }`}>
                     <div className={`px-4 py-2 flex items-center gap-2 font-bold text-sm ${
                       time === '아침' ? 'bg-amber-50 text-amber-700' :
                       time === '점심' ? 'bg-orange-50 text-orange-700' :
