@@ -23,11 +23,19 @@ export interface Settings {
   backgroundImageUrl: string | null;
   backgroundColor: string;
   favoriteFoodIds?: string[];
-  historyOrder?: string[];
+  historyOrder?: number[];
 }
 
 export interface TodayLunch {
   id: string;
   date: string; // YYYY-MM-DD
   imageUrl: string;
+}
+
+export interface HistoryEntry {
+  id: number;
+  weekTitle: string;
+  menus: MealEntry[];
+  settings: Settings;
+  todayLunch?: TodayLunch;
 }
