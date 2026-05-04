@@ -93,6 +93,7 @@ export default function MealAdminView() {
   const [aiImagePreview, setAiImagePreview] = useState<string | null>(null);
 
   const canvasRef = useRef<HTMLDivElement>(null);
+  const handleSaveRef = useRef<((options?: boolean | React.MouseEvent) => Promise<void>) | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -137,10 +138,10 @@ export default function MealAdminView() {
           };
           const pa = parse(a.week_title || '');
           const pb = parse(b.week_title || '');
-          if (pa.month !== pb.month) return pa.month - pb.month;
-          return pa.week - pb.week;
+          if (pa.month !== pb.month) return pb.month - pa.month;
+          return pb.week - pa.week;
         });
-        
+
         historyEntries = sorted.map(h => ({
           id: h.id,
           weekTitle: h.week_title,
@@ -185,11 +186,11 @@ export default function MealAdminView() {
       }
 
       if (entryToLoad) {
-        setMenus(entryToLoad.menus);
-        setSettings(entryToLoad.settings);
+        if (entryToLoad.menus) setMenus(entryToLoad.menus);
+        if (entryToLoad.settings) setSettings(entryToLoad.settings);
         if (entryToLoad.today_lunch) setTodayLunch(entryToLoad.today_lunch);
         else if (entryToLoad.todayLunch) setTodayLunch(entryToLoad.todayLunch);
-        
+
         // 초기 저장 상태 기록
         const initialData = {
           menus: entryToLoad.menus,
@@ -199,7 +200,7 @@ export default function MealAdminView() {
         setLastSavedData(JSON.stringify(initialData));
 
         // 만약 불러온 데이터가 과거 기록이라 배경이 없을 경우, 최신 상태(stateData)의 배경을 적용
-        if (stateData && (!entryToLoad.settings?.backgroundImageUrl && !entryToLoad.settings?.backgroundColor)) {
+        if (stateData?.settings && (!entryToLoad.settings?.backgroundImageUrl && !entryToLoad.settings?.backgroundColor)) {
           setSettings(prev => ({
             ...prev,
             backgroundImageUrl: stateData.settings.backgroundImageUrl,
@@ -219,7 +220,7 @@ export default function MealAdminView() {
     if (!isAuthenticated) return;
 
     const interval = setInterval(() => {
-      handleSave(false);
+      handleSaveRef.current?.(false);
     }, 180000);
 
     return () => clearInterval(interval);
@@ -306,6 +307,7 @@ export default function MealAdminView() {
 
   const handleSave = async (options?: boolean | React.MouseEvent) => {
     const showNotification = typeof options === 'boolean' ? options : true;
+    if (!isLoaded) return; // 데이터 로드 전엔 저장 금지 (stale closure 방어)
     // 1. 현재 상태 업데이트 (upsert)
     const { error: stateError } = await supabase
       .from('current_meal_state')
@@ -352,10 +354,10 @@ export default function MealAdminView() {
         };
         const pa = parse(a.week_title || '');
         const pb = parse(b.week_title || '');
-        if (pa.month !== pb.month) return pa.month - pb.month;
-        return pa.week - pb.week;
+        if (pa.month !== pb.month) return pb.month - pa.month;
+        return pb.week - pa.week;
       });
-      
+
       const historyEntries = sorted.map(h => ({
         id: h.id,
         weekTitle: h.week_title,
@@ -387,7 +389,12 @@ export default function MealAdminView() {
       console.log('Auto-saved at:', new Date().toLocaleTimeString());
     }
   };
-  
+
+  // 자동저장 interval이 항상 최신 handleSave를 참조하도록 ref 갱신
+  useEffect(() => {
+    handleSaveRef.current = handleSave;
+  });
+
   const handleDeleteHistory = async (id: number) => {
     if (!confirm('이 식단 기록을 영구히 삭제하시겠습니까?')) return;
     
@@ -2041,16 +2048,16 @@ export default function MealAdminView() {
       {/* History Management Modal */}
       {isHistoryManageModalOpen && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
-          <div className="bg-white rounded-xl shadow-xl w-[500px] max-w-[90vw] overflow-hidden flex flex-col max-h-[80vh]">
-            <div className="p-4 border-b flex justify-between items-center bg-gray-50">
+          <div className="bg-white rounded-xl shadow-xl w-[500px] max-w-[90vw] flex flex-col" style={{maxHeight: '70vh'}}>
+            <div className="p-4 border-b flex justify-between items-center bg-gray-50 shrink-0">
               <h2 className="font-bold text-lg flex items-center gap-2">
                 <History size={20} className="text-gray-600" />
                 저장된 식단 기록 관리
               </h2>
               <button onClick={() => setIsHistoryManageModalOpen(false)} className="text-gray-500 hover:text-gray-800">✕</button>
             </div>
-            
-            <div className="p-4 overflow-y-auto">
+
+            <div className="p-4 overflow-y-auto flex-1 min-h-0">
               {history.length === 0 ? (
                 <div className="text-center py-10 text-gray-400">
                   저장된 기록이 없습니다.
@@ -2089,8 +2096,8 @@ export default function MealAdminView() {
               )}
             </div>
             
-            <div className="p-4 border-t bg-gray-50 text-center">
-              <button 
+            <div className="p-4 border-t bg-gray-50 text-center shrink-0">
+              <button
                 onClick={() => setIsHistoryManageModalOpen(false)}
                 className="w-full py-2 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 transition-colors"
               >
