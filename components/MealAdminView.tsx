@@ -390,10 +390,8 @@ export default function MealAdminView() {
     }
   };
 
-  // 자동저장 interval이 항상 최신 handleSave를 참조하도록 ref 갱신
-  useEffect(() => {
-    handleSaveRef.current = handleSave;
-  });
+  // 자동저장 interval이 항상 최신 handleSave를 참조하도록 ref 갱신 (훅 규칙 준수: early return 이후 렌더 중 동기 업데이트)
+  handleSaveRef.current = handleSave;
 
   const handleDeleteHistory = async (id: number) => {
     if (!confirm('이 식단 기록을 영구히 삭제하시겠습니까?')) return;
