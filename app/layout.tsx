@@ -16,10 +16,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "연세척 식단표",
   description: "연세척병원 주간 식단표",
-  manifest: "/manifest.webmanifest",
   icons: {
-    icon: '/images/phonelogo.jpg',
-    apple: [{ url: '/images/phonelogo.jpg', sizes: '180x180', type: 'image/jpeg' }],
+    icon: '/images/phonelogo-192.png',
+    apple: [{ url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
   },
   appleWebApp: {
     capable: true,
