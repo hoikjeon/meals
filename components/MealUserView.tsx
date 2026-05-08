@@ -205,8 +205,9 @@ export default function MealUserView() {
       
       {/* Header */}
       <header className="w-full bg-white shadow-sm p-4 sticky top-0 z-10 flex justify-between items-center max-w-4xl mx-auto">
-        <div className="flex items-center gap-3">
-          <h1 className="text-xl font-bold text-gray-800">연세척 식단안내</h1>
+        <div className="flex items-center gap-2">
+          <img src="/images/yslogo.png" alt="연세척병원 로고" className="h-8 md:h-10 w-auto object-contain" />
+          <h1 className="text-lg md:text-xl font-bold text-gray-800 hidden sm:block">식단안내</h1>
           <Link href="/admin/meals" className="p-2 text-gray-400 hover:text-gray-600 transition-colors" title="관리자 페이지">
             <Settings size={20} />
           </Link>
@@ -507,8 +508,9 @@ export default function MealUserView() {
           }}
         >
           <div className="w-full h-full min-h-[270mm] bg-white/85 backdrop-blur-md rounded-2xl p-8 shadow-sm border border-white/50 flex flex-col">
-            <div className="text-center mb-6">
-              <h2 className="text-3xl font-black drop-shadow-md mb-2" style={{ color: settings.titleColor || '#f97316' }}>연세척 주간 식단표</h2>
+            <div className="flex flex-col items-center mb-6">
+              <img src="/images/yslogo.png" alt="연세척병원 로고" className="h-12 mb-3 object-contain" />
+              <h2 className="text-3xl font-black drop-shadow-md mb-2" style={{ color: settings.titleColor || '#f97316' }}>주간 식단표</h2>
               <h3 className="text-xl font-bold text-gray-800 border-b border-gray-400 pb-1 px-4 inline-block">{settings.weekTitle || '이번 주 식단'}</h3>
             </div>
 

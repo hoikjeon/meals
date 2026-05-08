@@ -243,8 +243,8 @@ export default function MealAdminView() {
         <div className="bg-white rounded-2xl shadow-2xl w-[400px] max-w-[90vw] overflow-hidden">
           {/* 헤더 */}
           <div className="bg-gradient-to-r from-orange-500 to-orange-600 p-6 text-center">
-            <div className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center mx-auto mb-3">
-              <Lock size={32} className="text-white" />
+            <div className="bg-white p-3 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg w-fit">
+              <img src="/images/yslogo.png" alt="연세척병원 로고" className="h-12 w-auto object-contain" />
             </div>
             <h2 className="text-xl font-bold text-white">관리자 로그인</h2>
             <p className="text-orange-100 text-sm mt-1">식단표 관리 페이지에 접근하려면 로그인하세요.</p>
@@ -874,7 +874,10 @@ export default function MealAdminView() {
             <Link href="/" className="p-2 bg-gray-200 text-gray-700 rounded-full hover:bg-gray-300 transition-colors" title="사용자 화면으로 돌아가기">
               <ArrowLeft size={18} />
             </Link>
-            <h1 className="text-base md:text-2xl font-bold text-gray-800">식단표 관리</h1>
+            <div className="flex items-center gap-2">
+              <img src="/images/yslogo.png" alt="로고" className="h-6 md:h-8 w-auto object-contain" />
+              <h1 className="text-base md:text-2xl font-bold text-gray-800">식단표 관리</h1>
+            </div>
           </div>
           <div className="flex gap-1.5 md:gap-2 items-center">
             <button 
@@ -911,8 +914,9 @@ export default function MealAdminView() {
         {/* 모바일 전용 식단 편집 */}
         <div className="md:hidden w-full mb-4">
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="text-center p-3 border-b border-gray-200">
-              <h2 className="text-lg font-bold" style={{ color: settings.titleColor || '#f97316' }}>연세척 주간 식단표</h2>
+            <div className="flex flex-col items-center p-3 border-b border-gray-200">
+              <img src="/images/yslogo.png" alt="로고" className="h-6 mb-1 object-contain" />
+              <h2 className="text-lg font-bold" style={{ color: settings.titleColor || '#f97316' }}>주간 식단표</h2>
               <div className="flex items-center justify-center gap-2 mt-1">
                 <button onClick={() => handleLoadHistory('prev')} className="p-1 text-gray-400"><ChevronLeft size={16} /></button>
                 <input 
@@ -1005,9 +1009,10 @@ export default function MealAdminView() {
           }}
         >
           <div className="w-full h-full min-h-[270mm] bg-white/85 backdrop-blur-md rounded-2xl p-8 shadow-sm border border-white/50 flex flex-col">
-            <div className="text-center mb-6">
+            <div className="flex flex-col items-center mb-6">
+              <img src="/images/yslogo.png" alt="연세척병원 로고" className="h-12 mb-3 object-contain" />
               <div className="flex items-center justify-center gap-3 mb-2">
-                <h2 className="text-3xl font-black drop-shadow-md" style={{ color: settings.titleColor || '#f97316' }}>연세척 주간 식단표</h2>
+                <h2 className="text-3xl font-black drop-shadow-md" style={{ color: settings.titleColor || '#f97316' }}>주간 식단표</h2>
                 <label className="ignore-pdf cursor-pointer bg-white p-1 rounded-full border border-gray-200 shadow-sm hover:bg-gray-50 flex items-center justify-center relative" title="제목 색상 변경">
                   <input 
                     type="color" 
