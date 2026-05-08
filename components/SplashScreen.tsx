@@ -24,10 +24,6 @@ export default function SplashScreen() {
         position: "fixed",
         inset: 0,
         zIndex: 9999,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        backgroundColor: "#ffffff",
         transition: "opacity 0.6s ease",
         opacity: fadeOut ? 0 : 1,
         pointerEvents: fadeOut ? "none" : "auto",
@@ -36,10 +32,9 @@ export default function SplashScreen() {
       <Image
         src="/images/loding-pic.png"
         alt="로딩 중"
-        width={220}
-        height={220}
+        fill
         priority
-        style={{ objectFit: "contain" }}
+        style={{ objectFit: "cover" }}
       />
     </div>
   );
