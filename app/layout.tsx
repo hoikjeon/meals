@@ -13,8 +13,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "연세척 식단 관리 애플리케이션",
-  description: "병원 등의 기관에서 사용하는 주간 식단표 시스템",
+  title: "연세척 식단표",
+  description: "연세척병원 주간 식단표",
+  icons: {
+    icon: '/images/yslogo.png',
+    apple: '/images/yslogo.png',
+  },
 };
 
 export default function RootLayout({
