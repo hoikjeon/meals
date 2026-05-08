@@ -16,8 +16,8 @@ export const metadata: Metadata = {
   title: "연세척 식단표",
   description: "연세척병원 주간 식단표",
   icons: {
-    icon: '/images/yslogo.png',
-    apple: '/images/yslogo.png',
+    icon: '/images/phonelogo.jpg',
+    apple: '/images/phonelogo.jpg',
   },
 };
 
