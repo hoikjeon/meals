@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { dummyFoodItems, dummyWeeklyMenus, dummySettings, dummyTodayLunch } from '@/lib/dummyData';
 import { DayOfWeek, MealTime } from '@/lib/types';
 import { DAYS, getWeekDatesFromTitle } from '@/lib/dateUtils';
-import { BellRing, ChevronLeft, ChevronRight, Camera, Download, Settings, CalendarDays, List } from 'lucide-react';
+import { BellRing, ChevronLeft, ChevronRight, Camera, Download, Settings, CalendarDays, List, ChevronDown } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import jsPDF from 'jspdf';
 import Link from 'next/link';
@@ -25,6 +25,7 @@ export default function MealUserView() {
   const [currentHistoryIndex, setCurrentHistoryIndex] = useState(-1);
   const [mobileView, setMobileView] = useState<'daily' | 'weekly'>('daily');
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
+  const [showOrigin, setShowOrigin] = useState(false);
   
   useEffect(() => {
     const fetchData = async () => {
@@ -463,12 +464,12 @@ export default function MealUserView() {
                   {new Date().getFullYear()}년 {new Date().getMonth() + 1}월 {new Date().getDate()}일 ({['일','월','화','수','목','금','토'][new Date().getDay()]}요일)
                 </span>
               </div>
-              <div className="relative aspect-[4/3] w-full bg-gray-100">
+              <div className="relative w-full bg-black" style={{ aspectRatio: '1000/1350' }}>
                 {todayLunch.imageUrl ? (
-                  <img 
-                    src={todayLunch.imageUrl} 
-                    alt="오늘의 점심" 
-                    className="w-full h-full object-cover"
+                  <img
+                    src={todayLunch.imageUrl}
+                    alt="오늘의 점심"
+                    className="w-full h-full object-contain"
                   />
                 ) : (
                   <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-2">
@@ -484,9 +485,20 @@ export default function MealUserView() {
               </div>
             </section>
 
-            {/* 원산지 정보 - 모바일에서 아래로 */}
-            <div className="mt-2 md:mt-4 p-3 md:p-4 bg-white/60 rounded-xl text-xs text-gray-600 whitespace-pre-wrap border border-gray-200 order-2 md:order-1">
-              {settings.originText}
+            {/* 원산지 정보 - 접기/펼치기 */}
+            <div className="mt-2 md:mt-4 border border-gray-200 rounded-xl overflow-hidden order-2 md:order-1">
+              <button
+                onClick={() => setShowOrigin(v => !v)}
+                className="w-full flex items-center justify-between px-4 py-2.5 bg-white/60 text-xs font-semibold text-gray-500 hover:bg-gray-50 transition-colors"
+              >
+                <span>원산지 정보</span>
+                <ChevronDown size={15} className={`transition-transform duration-200 ${showOrigin ? 'rotate-180' : ''}`} />
+              </button>
+              {showOrigin && (
+                <div className="p-3 md:p-4 bg-white/60 text-xs text-gray-600 whitespace-pre-wrap border-t border-gray-200">
+                  {settings.originText}
+                </div>
+              )}
             </div>
           </div>
         </section>

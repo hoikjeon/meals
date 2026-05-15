@@ -14,6 +14,7 @@ import { toPng } from 'html-to-image';
 import jsPDF from 'jspdf';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
+import ImageCropModal from './ImageCropModal';
 
 const ADMIN_ID = 'ys';
 const ADMIN_PW = 'ys1004!';
@@ -85,7 +86,8 @@ export default function MealAdminView() {
   const [pendingKimchiDrop, setPendingKimchiDrop] = useState<{foodId: string; day: DayOfWeek; time: MealTime} | null>(null);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [lastSavedData, setLastSavedData] = useState<string>('');
-  
+  const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
+
   // AI 관련 상태
   const [aiStep, setAiStep] = useState<'input' | 'review'>('input');
   const [reviewFoods, setReviewFoods] = useState<{name: string, category: Category, origin?: string, checked: boolean}[]>([]);
@@ -690,47 +692,38 @@ export default function MealAdminView() {
 
   const handleLunchImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const url = event.target?.result as string;
-        const updated = { ...todayLunch, imageUrl: url, date: new Date().toISOString().split('T')[0] };
-        setTodayLunch(updated);
-        
-        // Supabase에 즉시 반영
-        const saveState = async () => {
-          // 1. 현재 상태 업데이트
-          const { error: stateError } = await supabase.from('current_meal_state').upsert({
-            id: 1,
-            menus,
-            settings,
-            today_lunch: updated,
-            updated_at: new Date().toISOString()
-          });
+    e.target.value = '';
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setCropImageSrc(event.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
 
-          if (stateError) throw stateError;
+  const handleCropConfirm = async (croppedUrl: string) => {
+    setCropImageSrc(null);
+    const updated = { ...todayLunch, imageUrl: croppedUrl, date: new Date().toISOString().split('T')[0] };
+    setTodayLunch(updated);
 
-          // 2. 히스토리에도 동일하게 반영 (사용자 화면 동기화)
-          const existing = history.find(h => h.weekTitle === settings.weekTitle);
-          if (existing) {
-            const { error: historyError } = await supabase
-              .from('meal_history')
-              .update({ today_lunch: updated })
-              .eq('id', existing.id);
-            if (historyError) console.warn('History sync failed:', historyError);
-          }
-        };
+    try {
+      const { error: stateError } = await supabase.from('current_meal_state').upsert({
+        id: 1,
+        menus,
+        settings,
+        today_lunch: updated,
+        updated_at: new Date().toISOString()
+      });
+      if (stateError) throw stateError;
 
-        saveState()
-          .then(() => {
-            alert('오늘의 점심 사진이 자동으로 저장되었습니다.');
-          })
-          .catch((err) => {
-            console.error('Error auto-saving lunch image:', err);
-            alert('사진 저장 중 오류가 발생했습니다.');
-          });
-      };
-      reader.readAsDataURL(file);
+      const existing = history.find(h => h.weekTitle === settings.weekTitle);
+      if (existing) {
+        await supabase.from('meal_history').update({ today_lunch: updated }).eq('id', existing.id);
+      }
+      alert('오늘의 점심 사진이 저장되었습니다.');
+    } catch (err) {
+      console.error('Error saving lunch image:', err);
+      alert('사진 저장 중 오류가 발생했습니다.');
     }
   };
 
@@ -863,6 +856,7 @@ export default function MealAdminView() {
   })();
 
   return (
+    <>
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <div className="flex flex-col md:flex-row h-screen bg-gray-100 md:p-4 md:gap-4 overflow-hidden">
       
@@ -1280,12 +1274,11 @@ export default function MealAdminView() {
         title="오늘의 점심 사진 찍기"
       >
         <Camera size={28} />
-        <input 
-          type="file" 
-          className="hidden" 
-          accept="image/*" 
-          capture="environment" 
-          onChange={handleLunchImageUpload} 
+        <input
+          type="file"
+          className="hidden"
+          accept="image/*"
+          onChange={handleLunchImageUpload}
         />
       </label>
 
@@ -1950,8 +1943,8 @@ export default function MealAdminView() {
             
             <div className="p-6">
               {todayLunch.imageUrl ? (
-                <div className="relative rounded-lg overflow-hidden mb-4 border border-gray-200">
-                  <img src={todayLunch.imageUrl} alt="오늘의 점심" className="w-full aspect-[4/3] object-cover" />
+                <div className="relative rounded-lg overflow-hidden mb-4 border border-gray-200 bg-black">
+                  <img src={todayLunch.imageUrl} alt="오늘의 점심" className="w-full object-contain" style={{ aspectRatio: '1000/1350' }} />
                   <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-3">
                     <p className="text-white text-sm font-medium">{todayLunch.date} 점심</p>
                   </div>
@@ -2122,6 +2115,15 @@ export default function MealAdminView() {
 
     </div>
     </DndContext>
+
+    {cropImageSrc && (
+      <ImageCropModal
+        imageSrc={cropImageSrc}
+        onConfirm={handleCropConfirm}
+        onClose={() => setCropImageSrc(null)}
+      />
+    )}
+    </>
   );
 }
 
