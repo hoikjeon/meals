@@ -21,7 +21,7 @@ const ADMIN_PW = 'ys1004!';
 
 
 const TIMES: MealTime[] = ['아침', '점심', '저녁'];
-const CATEGORIES = ['밥', '국', '반찬'] as const;
+const CATEGORIES = ['밥', '국', '반찬', '기타'] as const;
 const CHOSUNGS = ['전체', 'ㄱ', 'ㄴ', 'ㄷ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅅ', 'ㅇ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'];
 
 const getChosungGroup = (char: string) => {
@@ -61,7 +61,7 @@ export default function MealAdminView() {
   const [menus, setMenus] = useState<MealEntry[]>([]);
   const [settings, setSettings] = useState(dummySettings);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'밥' | '국' | '반찬'>('반찬');
+  const [activeTab, setActiveTab] = useState<Category>('반찬');
   const [bgImageFile, setBgImageFile] = useState<string | null>(null);
   const [todayLunch, setTodayLunch] = useState(dummyTodayLunch);
   const [foodDb, setFoodDb] = useState<FoodItem[]>([]);
@@ -1575,7 +1575,7 @@ export default function MealAdminView() {
                 <select 
                   className="w-full border border-gray-300 rounded p-2 focus:ring-2 focus:ring-blue-500"
                   value={editingFood.category}
-                  onChange={(e) => setEditingFood({ ...editingFood, category: e.target.value as '밥' | '국' | '반찬' })}
+                  onChange={(e) => setEditingFood({ ...editingFood, category: e.target.value as Category })}
                 >
                   {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
@@ -1845,6 +1845,7 @@ export default function MealAdminView() {
                               <option value="밥">밥</option>
                               <option value="국">국</option>
                               <option value="반찬">반찬</option>
+                              <option value="기타">기타</option>
                             </select>
                           </td>
                           <td className="p-2 border-b">

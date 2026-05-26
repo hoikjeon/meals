@@ -19,17 +19,18 @@ export async function POST(req: Request) {
         ...
       ],
       "all_extracted_foods": [
-        {"name": "메뉴이름", "category": "밥/국/반찬", "origin": "원산지"}
+        {"name": "메뉴이름", "category": "밥/국/반찬/기타", "origin": "원산지"}
       ]
     }
 
     Rules:
     1. Scan the entire image/text and extract ALL food items from EVERY cell.
     2. 'all_extracted_foods' must contain a unique list of ALL food items found in the 'menus' section.
-    3. For 'category', choose strictly from ['밥', '국', '반찬'].
+    3. For 'category', choose strictly from ['밥', '국', '반찬', '기타'].
        - If it's a soup/stew, it's '국'.
        - If it's rice/porridge, it's '밥'.
-       - Everything else is '반찬'.
+       - If it's a side dish or main dish (meat, fish, vegetables, kimchi), it's '반찬'.
+       - If it's a beverage (milk, yogurt, juice), dessert, fruit, bread, snack, or other miscellaneous item, it's '기타'.
     4. If origin info is next to a food (e.g., "쇠고기:국내산"), extract it into the 'origin' field and keep the 'name' clean.
     5. Language: Korean.
     6. Output ONLY the JSON.`;
