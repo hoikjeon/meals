@@ -1970,19 +1970,26 @@ export default function MealAdminView() {
             </div>
             
             <div className="p-6">
-              {todayLunch.imageUrl ? (
-                <div className="relative rounded-lg overflow-hidden mb-4 border border-gray-200 bg-black">
-                  <img src={todayLunch.imageUrl} alt="오늘의 점심" className="w-full object-contain" style={{ aspectRatio: '1000/1350' }} />
-                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-3">
-                    <p className="text-white text-sm font-medium">{todayLunch.date} 점심</p>
+              <div className="relative rounded-lg overflow-hidden mb-4 border border-gray-200 bg-black">
+                <img 
+                  src={todayLunch.imageUrl || '/images/main food.png'} 
+                  alt="오늘의 점심" 
+                  className={`w-full object-contain ${!todayLunch.imageUrl ? 'opacity-60' : ''}`} 
+                  style={{ aspectRatio: '1000/1350' }} 
+                />
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-3">
+                  <p className="text-white text-sm font-medium">
+                    {todayLunch.imageUrl ? `${todayLunch.date} 점심` : '기본 노출 이미지'}
+                  </p>
+                </div>
+                {!todayLunch.imageUrl && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <span className="bg-black/70 text-white text-xs font-bold px-3 py-1.5 rounded-full backdrop-blur-sm">
+                      ⚠️ 기본 이미지 노출 중
+                    </span>
                   </div>
-                </div>
-              ) : (
-                <div className="w-full aspect-[4/3] bg-gray-100 rounded-lg border-2 border-dashed border-gray-300 flex flex-col items-center justify-center mb-4">
-                  <Camera size={48} className="text-gray-300 mb-2" />
-                  <p className="text-gray-400 text-sm">아직 사진이 없습니다</p>
-                </div>
-              )}
+                )}
+              </div>
 
               <label className="w-full bg-orange-500 text-white py-3 rounded-lg flex items-center justify-center gap-2 cursor-pointer hover:bg-orange-600 transition-colors font-bold">
                 <ImagePlus size={20} />

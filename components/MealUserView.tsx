@@ -465,23 +465,20 @@ export default function MealUserView() {
                 </span>
               </div>
               <div className="relative w-full bg-black" style={{ aspectRatio: '1000/1350' }}>
-                {todayLunch.imageUrl ? (
-                  <img
-                    src={todayLunch.imageUrl}
-                    alt="오늘의 점심"
-                    className="w-full h-full object-contain"
-                  />
-                ) : (
-                  <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-2">
-                    <Camera size={40} className="text-gray-300" />
-                    <p className="text-sm">사진이 아직 올라오지 않았습니다.</p>
-                  </div>
-                )}
-                {todayLunch.imageUrl && (
-                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-4">
-                    <p className="text-white font-medium">{new Date().getMonth() + 1}월 {new Date().getDate()}일 맛있는 점심 드세요! 🍚</p>
-                  </div>
-                )}
+                <img
+                  src={todayLunch.imageUrl || '/images/main food.png'}
+                  alt="오늘의 점심"
+                  className="w-full h-full object-contain"
+                />
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-4">
+                  <p className="text-white font-medium">
+                    {todayLunch.imageUrl ? (
+                      `${new Date().getMonth() + 1}월 ${new Date().getDate()}일 맛있는 점심 드세요! 🍚`
+                    ) : (
+                      '맛있는 점심 드세요! 🍚'
+                    )}
+                  </p>
+                </div>
               </div>
             </section>
 
