@@ -103,6 +103,16 @@ export default function MealAdminView() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedChosung, setSelectedChosung] = useState('전체');
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  
+  const getTodayDateString = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const isLunchForToday = !!(todayLunch && todayLunch.imageUrl && todayLunch.date === getTodayDateString());
   const [isLunchModalOpen, setIsLunchModalOpen] = useState(false);
   const [isMobileFoodPanelOpen, setIsMobileFoodPanelOpen] = useState(false);
   const [isKimchiModalOpen, setIsKimchiModalOpen] = useState(false);
@@ -1972,17 +1982,17 @@ export default function MealAdminView() {
             <div className="p-6">
               <div className="relative rounded-lg overflow-hidden mb-4 border border-gray-200 bg-black">
                 <img 
-                  src={todayLunch.imageUrl || '/images/main food.png'} 
+                  src={isLunchForToday ? todayLunch.imageUrl : '/images/main food.png'} 
                   alt="오늘의 점심" 
-                  className={`w-full object-contain ${!todayLunch.imageUrl ? 'opacity-60' : ''}`} 
+                  className={`w-full object-contain ${!isLunchForToday ? 'opacity-60' : ''}`} 
                   style={{ aspectRatio: '1000/1350' }} 
                 />
                 <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-3">
                   <p className="text-white text-sm font-medium">
-                    {todayLunch.imageUrl ? `${todayLunch.date} 점심` : '기본 노출 이미지'}
+                    {isLunchForToday ? `${todayLunch.date} 점심` : '기본 노출 이미지'}
                   </p>
                 </div>
-                {!todayLunch.imageUrl && (
+                {!isLunchForToday && (
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                     <span className="bg-black/70 text-white text-xs font-bold px-3 py-1.5 rounded-full backdrop-blur-sm">
                       ⚠️ 기본 이미지 노출 중

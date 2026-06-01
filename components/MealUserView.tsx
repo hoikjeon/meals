@@ -178,6 +178,16 @@ export default function MealUserView() {
     return d.getDate() === today.getDate() && d.getMonth() === today.getMonth() && d.getFullYear() === today.getFullYear();
   });
   const todayDayName = todayDayIndex >= 0 ? DAYS[todayDayIndex] : null;
+  
+  const getTodayDateString = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const isLunchForToday = !!(todayLunch && todayLunch.imageUrl && todayLunch.date === getTodayDateString());
 
   // 모바일: 선택된 날의 라벨 (오늘/내일/모레/요일)
   const getDayLabel = (idx: number) => {
@@ -466,13 +476,13 @@ export default function MealUserView() {
               </div>
               <div className="relative w-full bg-black" style={{ aspectRatio: '1000/1350' }}>
                 <img
-                  src={todayLunch.imageUrl || '/images/main food.png'}
+                  src={isLunchForToday ? todayLunch.imageUrl : '/images/main food.png'}
                   alt="오늘의 점심"
                   className="w-full h-full object-contain"
                 />
                 <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-4">
                   <p className="text-white font-medium">
-                    {todayLunch.imageUrl ? (
+                    {isLunchForToday ? (
                       `${new Date().getMonth() + 1}월 ${new Date().getDate()}일 맛있는 점심 드세요! 🍚`
                     ) : (
                       '맛있는 점심 드세요! 🍚'
