@@ -42,11 +42,38 @@ const buildWeekTitle = (month: number, week: number) => `${month}월 ${week}주�
 
 function getCurrentWeekOfMonth(): { month: number; week: number } {
   const today = new Date();
-  const month = today.getMonth() + 1;
-  const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-  const offset = (firstDay.getDay() + 6) % 7; // 월요일 기준
-  const week = Math.min(Math.ceil((today.getDate() + offset) / 7), 5);
-  return { month, week };
+  
+  // 오늘이 속한 주의 월요일 구하기
+  const day = today.getDay();
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  const monday = new Date(today);
+  monday.setDate(today.getDate() + mondayOffset);
+  
+  // 오늘이 속한 주의 일요일 구하기
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  
+  // 월요일과 일요일의 월이 다르면, 일요일 기준의 1주차가 됨
+  if (monday.getMonth() !== sunday.getMonth()) {
+    return {
+      month: sunday.getMonth() + 1,
+      week: 1
+    };
+  }
+  
+  // 월요일과 일요일의 월이 같으면, 해당 월의 1일 기준 계산
+  const targetMonth = monday.getMonth() + 1;
+  const firstDay = new Date(monday.getFullYear(), monday.getMonth(), 1);
+  const firstDayOfWeek = firstDay.getDay();
+  const offset = firstDayOfWeek === 0 ? -6 : 1 - firstDayOfWeek;
+  const firstMonday = new Date(firstDay);
+  firstMonday.setDate(firstDay.getDate() + offset);
+  
+  const diffTime = monday.getTime() - firstMonday.getTime();
+  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+  const week = Math.round(diffDays / 7) + 1;
+  
+  return { month: targetMonth, week };
 }
 
 export default function MealAdminView() {

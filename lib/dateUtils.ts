@@ -23,24 +23,15 @@ export const getWeekDatesFromTitle = (title: string) => {
   const targetMonth = parseInt(match[1]); // 1-indexed
   const targetWeek = parseInt(match[2]);   // 1-indexed
 
-  // 해당 월의 1일부터 시작하여 N주차 월요일을 구함
+  // 1일이 포함된 주의 월요일을 구함 (월~일 기준)
   const firstDay = new Date(currentYear, targetMonth - 1, 1);
-  const firstDayOfWeek = firstDay.getDay(); // 0=Sun
-  let firstMondayOffset: number;
-  if (firstDayOfWeek === 0) {
-    firstMondayOffset = 1;
-  } else if (firstDayOfWeek === 1) {
-    firstMondayOffset = 0;
-  } else {
-    firstMondayOffset = 8 - firstDayOfWeek;
-  }
-
-  let week1Monday: Date;
-  if (firstDayOfWeek >= 1 && firstDayOfWeek <= 4) {
-    week1Monday = new Date(currentYear, targetMonth - 1, 1 - (firstDayOfWeek - 1));
-  } else {
-    week1Monday = new Date(currentYear, targetMonth - 1, 1 + firstMondayOffset);
-  }
+  const firstDayOfWeek = firstDay.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+  
+  // 1일이 속한 주의 월요일 날짜 계산
+  // 일요일(0)이면 -6일, 그 외에는 1 - firstDayOfWeek 일
+  const offset = firstDayOfWeek === 0 ? -6 : 1 - firstDayOfWeek;
+  const week1Monday = new Date(firstDay);
+  week1Monday.setDate(firstDay.getDate() + offset);
 
   const targetMonday = new Date(week1Monday);
   targetMonday.setDate(week1Monday.getDate() + (targetWeek - 1) * 7);
