@@ -537,7 +537,7 @@ export default function MealUserView() {
               <thead>
                 <tr>
                   <th className="border border-gray-400 p-2 w-12 text-center bg-gray-100"></th>
-                  {(['월', '화', '수', '목', '금'] as const).map(day => (
+                  {DAYS.map(day => (
                     <th key={day} className="border border-gray-400 p-2 text-center bg-gray-50 font-bold">
                       {day}요일
                     </th>
@@ -550,7 +550,7 @@ export default function MealUserView() {
                     <td className="border border-gray-400 p-2 text-center font-bold bg-gray-50 align-middle">
                       {time}
                     </td>
-                    {(['월', '화', '수', '목', '금'] as const).map(day => {
+                    {DAYS.map(day => {
                       const menuEntry = menus.find(m => m.day === day && m.time === time);
                       const foods = menuEntry ? menuEntry.foodIds.map(id => foodDb.find(f => f.id === id)!).filter(Boolean) : [];
 
