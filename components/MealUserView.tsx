@@ -1,9 +1,11 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element -- PDF capture and data URL images need plain img elements. */
+
 import React, { useState, useRef, useEffect } from 'react';
 import { dummyFoodItems, dummyWeeklyMenus, dummySettings, dummyTodayLunch } from '@/lib/dummyData';
-import { DayOfWeek, MealTime } from '@/lib/types';
-import { DAYS, getWeekDatesFromTitle } from '@/lib/dateUtils';
+import { HistoryEntry, MealEntry, MealTime, Settings as MealSettings, TodayLunch } from '@/lib/types';
+import { formatDate, getWeekDatesFromTitle, getWeekDatesFromWeekStart, getWeekStartFromTitle, DAYS } from '@/lib/dateUtils';
 import { BellRing, ChevronLeft, ChevronRight, Camera, Download, Settings, CalendarDays, List, ChevronDown } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import jsPDF from 'jspdf';
@@ -13,6 +15,57 @@ import { supabase } from '@/lib/supabase';
 
 const TIMES: MealTime[] = ['아침', '점심', '저녁'];
 
+type MealHistoryRow = {
+  id: number;
+  week_title: string | null;
+  menus: MealEntry[];
+  settings: MealSettings;
+  today_lunch: TodayLunch | null;
+};
+
+const parseWeekTitle = (title: string | null | undefined) => {
+  const match = (title || '').match(/(\d+)\s*월\s*(\d+)\s*주/);
+  if (!match) return { month: 0, week: 0 };
+  return { month: parseInt(match[1]), week: parseInt(match[2]) };
+};
+
+const sortMealHistoryAsc = (a: MealHistoryRow, b: MealHistoryRow) => {
+  const pa = parseWeekTitle(a.week_title);
+  const pb = parseWeekTitle(b.week_title);
+  if (pa.month !== pb.month) return pa.month - pb.month;
+  return pa.week - pb.week;
+};
+
+const toHistoryEntry = (row: MealHistoryRow): HistoryEntry => ({
+  id: row.id,
+  weekTitle: row.week_title || '',
+  menus: row.menus,
+  settings: {
+    ...row.settings,
+    weekStart: row.settings.weekStart || getWeekStartFromTitle(row.week_title || '') || formatDate(getWeekDatesFromTitle(row.week_title || '')[0])
+  },
+  todayLunch: row.today_lunch || undefined
+});
+
+const getHistoryWeekDates = (entry: HistoryEntry) => (
+  entry.settings.weekStart
+    ? getWeekDatesFromWeekStart(entry.settings.weekStart)
+    : getWeekDatesFromTitle(entry.weekTitle)
+);
+
+const applyHistoryOrder = (entries: HistoryEntry[], order?: number[]) => {
+  if (!Array.isArray(order)) return entries;
+
+  return [...entries].sort((a, b) => {
+    const idxA = order.indexOf(a.id);
+    const idxB = order.indexOf(b.id);
+    if (idxA === -1 && idxB === -1) return 0;
+    if (idxA === -1) return 1;
+    if (idxB === -1) return -1;
+    return idxA - idxB;
+  });
+};
+
 export default function MealUserView() {
   const [hasNotification, setHasNotification] = useState(true);
   
@@ -21,10 +74,10 @@ export default function MealUserView() {
   const [todayLunch, setTodayLunch] = useState(dummyTodayLunch);
   const [foodDb, setFoodDb] = useState(dummyFoodItems);
   const [isLoaded, setIsLoaded] = useState(false);
-  const [history, setHistory] = useState<any[]>([]);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [currentHistoryIndex, setCurrentHistoryIndex] = useState(-1);
   const [mobileView, setMobileView] = useState<'daily' | 'weekly'>('daily');
-  const [selectedDayIndex, setSelectedDayIndex] = useState(0);
+  const [selectedDayIndex, setSelectedDayIndex] = useState<number | null>(null);
   const [showOrigin, setShowOrigin] = useState(false);
   
   useEffect(() => {
@@ -52,45 +105,19 @@ export default function MealUserView() {
       // 3. 히스토리 로드
       const { data: historyData } = await supabase.from('meal_history').select('*');
       if (historyData) {
-        const sorted = [...historyData].sort((a: any, b: any) => {
-          const parse = (title: string) => {
-            const match = title.match(/(\d+)\s*월\s*(\d+)\s*주/);
-            if (!match) return { month: 0, week: 0 };
-            return { month: parseInt(match[1]), week: parseInt(match[2]) };
-          };
-          const pa = parse(a.week_title || '');
-          const pb = parse(b.week_title || '');
-          if (pa.month !== pb.month) return pa.month - pb.month;
-          return pa.week - pb.week;
-        });
+        const sorted = (historyData as MealHistoryRow[]).slice().sort(sortMealHistoryAsc);
         
-        const historyEntries = sorted.map(h => ({
-          id: h.id,
-          weekTitle: h.week_title,
-          menus: h.menus,
-          settings: h.settings,
-          todayLunch: h.today_lunch
-        }));
+        let historyEntries = sorted.map(toHistoryEntry);
         
         // Apply manual order if exists in current state
-        const order = stateData?.settings?.historyOrder;
-        if (order && Array.isArray(order)) {
-          historyEntries.sort((a, b) => {
-            const idxA = order.indexOf(a.id);
-            const idxB = order.indexOf(b.id);
-            if (idxA === -1 && idxB === -1) return 0;
-            if (idxA === -1) return 1;
-            if (idxB === -1) return -1;
-            return idxA - idxB;
-          });
-        }
+        historyEntries = applyHistoryOrder(historyEntries, stateData?.settings?.historyOrder);
         
         setHistory(historyEntries);
 
         // 오늘 날짜가 포함된 주차 찾기
         const today = new Date();
-        const todayIdx = historyEntries.findIndex((h: any) => {
-          const dates = getWeekDatesFromTitle(h.weekTitle);
+        const todayIdx = historyEntries.findIndex((h) => {
+          const dates = getHistoryWeekDates(h);
           return dates.some(d => 
             d.getDate() === today.getDate() && 
             d.getMonth() === today.getMonth() && 
@@ -107,7 +134,7 @@ export default function MealUserView() {
           if (entry.todayLunch) setTodayLunch(entry.todayLunch);
         } else if (stateData) {
           // 없으면 기존처럼 current_meal_state 사용
-          const idx = historyEntries.findIndex((h: any) => h.weekTitle === stateData.settings.weekTitle);
+          const idx = historyEntries.findIndex((h) => h.weekTitle === stateData.settings.weekTitle);
           setCurrentHistoryIndex(idx >= 0 ? idx : historyEntries.length - 1);
           setMenus(stateData.menus);
           setSettings(stateData.settings);
@@ -171,13 +198,16 @@ export default function MealUserView() {
 
 
 
-  const weekDates = getWeekDatesFromTitle(settings.weekTitle || '');
+  const weekDates = settings.weekStart
+    ? getWeekDatesFromWeekStart(settings.weekStart)
+    : getWeekDatesFromTitle(settings.weekTitle || '');
   const today = new Date();
   const todayDayIndex = DAYS.findIndex((_, i) => {
     const d = weekDates[i];
     return d.getDate() === today.getDate() && d.getMonth() === today.getMonth() && d.getFullYear() === today.getFullYear();
   });
   const todayDayName = todayDayIndex >= 0 ? DAYS[todayDayIndex] : null;
+  const activeSelectedDayIndex = selectedDayIndex ?? (todayDayIndex >= 0 ? todayDayIndex : 0);
   
   const getTodayDateString = () => {
     const d = new Date();
@@ -202,13 +232,6 @@ export default function MealUserView() {
 
   const MEAL_ICONS: Record<string, string> = { '아침': '☀️', '점심': '🍱', '저녁': '🌙' };
 
-  // 모바일: 오늘 요일로 자동 선택
-  useEffect(() => {
-    if (todayDayIndex >= 0) {
-      setSelectedDayIndex(todayDayIndex);
-    }
-  }, [todayDayIndex]);
-  
   if (!isLoaded) return <div className="min-h-screen bg-gray-50 flex items-center justify-center">로딩중...</div>;
 
   return (
@@ -295,7 +318,7 @@ export default function MealUserView() {
             <div className="flex gap-1 overflow-x-auto pb-2 mb-3 scrollbar-hide">
               {DAYS.map((day, i) => {
                 const isToday = i === todayDayIndex;
-                const isSelected = i === selectedDayIndex;
+                const isSelected = i === activeSelectedDayIndex;
                 const dateNum = weekDates[i]?.getDate();
                 const month = weekDates[i] ? weekDates[i].getMonth() + 1 : '';
                 return (
@@ -312,7 +335,7 @@ export default function MealUserView() {
                   >
                     <span className="text-[10px] font-normal">{getDayLabel(i)}</span>
                     <span className="text-sm font-bold">{day}</span>
-                    <span className={`text-[9px] ${isSelected ? 'text-orange-100' : 'text-gray-400'}`}>{month}/{dateNum}</span>
+                    <span className={`text-[11px] font-semibold ${isSelected ? 'text-orange-100' : 'text-gray-400'}`}>{month}/{dateNum}</span>
                   </button>
                 );
               })}
@@ -321,7 +344,7 @@ export default function MealUserView() {
             {/* 선택된 날의 식단 카드 */}
             <div className="flex flex-col gap-3">
               {TIMES.map(time => {
-                const day = DAYS[selectedDayIndex];
+                const day = DAYS[activeSelectedDayIndex];
                 const menuEntry = menus.find(m => m.day === day && m.time === time);
                 const foods = menuEntry ? menuEntry.foodIds.map(id => foodDb.find(f => f.id === id)!).filter(Boolean) : [];
                 return (
@@ -373,7 +396,7 @@ export default function MealUserView() {
                         return (
                           <th key={day} className={`border p-1.5 text-center font-semibold text-xs ${isToday ? 'bg-orange-500 text-white border-orange-500' : 'bg-orange-50 text-orange-800 border-gray-200'}`}>
                             <div>{day}</div>
-                            <div className={`text-[9px] font-normal ${isToday ? 'text-orange-100' : 'text-orange-400'}`}>{month}/{dateNum}</div>
+                            <div className={`text-[11px] font-semibold ${isToday ? 'text-orange-100' : 'text-orange-400'}`}>{month}/{dateNum}</div>
                           </th>
                         );
                       })}
@@ -391,7 +414,7 @@ export default function MealUserView() {
                               <div className="min-h-[120px] flex flex-col gap-1 items-center justify-start">
                                 {foods.length > 0 ? foods.map(food => (
                                   <div key={food.id} className="flex flex-col">
-                                    <span className="text-[10px] font-bold text-gray-800 break-keep leading-tight">{food.name}</span>
+                                    <span className="text-[10px] font-bold text-gray-800 break-all leading-tight">{food.name}</span>
                                     {food.origin && <span className="text-[8px] text-gray-500">({food.origin})</span>}
                                   </div>
                                 )) : <span className="text-gray-300 mt-8">-</span>}
@@ -421,7 +444,7 @@ export default function MealUserView() {
                       return (
                         <th key={day} className={`border p-2 text-center font-semibold w-[12%] ${isToday ? 'bg-orange-500 text-white border-orange-500 border-2' : 'bg-orange-50 text-orange-800 border-gray-200'}`}>
                           <div>{day}</div>
-                          <div className={`text-[10px] font-normal ${isToday ? 'text-orange-100' : 'text-orange-400'}`}>{month}/{dateNum}</div>
+                          <div className={`text-xs font-semibold ${isToday ? 'text-orange-100' : 'text-orange-400'}`}>{month}/{dateNum}</div>
                         </th>
                       );
                     })}
@@ -441,7 +464,7 @@ export default function MealUserView() {
                                 <div className="flex flex-col gap-2 w-full h-full justify-start mt-1">
                                   {foods.map(food => (
                                     <div key={food.id} className="flex flex-col gap-0.5">
-                                      <span className="text-[11px] font-bold text-gray-800 break-keep leading-tight">{food.name}</span>
+                                      <span className="text-[11px] font-bold text-gray-800 break-all leading-tight">{food.name}</span>
                                       {food.origin && <span className="text-[9px] text-gray-500 leading-tight">({food.origin})</span>}
                                     </div>
                                   ))}
@@ -537,11 +560,19 @@ export default function MealUserView() {
               <thead>
                 <tr>
                   <th className="border border-gray-400 p-2 w-12 text-center bg-gray-100"></th>
-                  {DAYS.map(day => (
-                    <th key={day} className="border border-gray-400 p-2 text-center bg-gray-50 font-bold">
-                      {day}요일
-                    </th>
-                  ))}
+                  {DAYS.map((day, i) => {
+                    const date = weekDates[i];
+                    return (
+                      <th key={day} className="border border-gray-400 p-2 text-center bg-gray-50 font-bold">
+                        <div>{day}요일</div>
+                        {date && (
+                          <div className="mt-1 text-sm font-semibold text-gray-600">
+                            {date.getMonth() + 1}/{date.getDate()}
+                          </div>
+                        )}
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
@@ -559,7 +590,7 @@ export default function MealUserView() {
                           <div className="min-h-[160px] h-full p-2 flex flex-col gap-2 items-center justify-start">
                             {foods.map(food => (
                               <div key={food.id} className="text-[11px] text-center relative w-full flex flex-col gap-0.5">
-                                <div className="font-bold text-gray-800 leading-tight break-keep">{food.name}</div>
+                                <div className="font-bold text-gray-800 leading-tight break-all" style={{ overflowWrap: 'anywhere' }}>{food.name}</div>
                                 {food.origin && <div className="text-[9px] text-gray-500 leading-tight">({food.origin})</div>}
                               </div>
                             ))}

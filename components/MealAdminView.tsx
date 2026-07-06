@@ -1,28 +1,173 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from 'react';
-import { DndContext, DragEndEvent, DragOverlay, useSensor, useSensors, PointerSensor, DragStartEvent, closestCenter, useDraggable } from '@dnd-kit/core';
+/* eslint-disable @next/next/no-img-element -- PDF capture and data URL previews need plain img elements. */
+
+import React, { useState, useRef, useEffect, useSyncExternalStore } from 'react';
+import { DndContext, DragEndEvent, DragOverlay, useSensor, useSensors, PointerSensor, DragStartEvent, closestCenter } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { DAYS, getWeekDatesFromTitle } from '@/lib/dateUtils';
-import { dummyFoodItems, dummyWeeklyMenus, dummySettings, dummyTodayLunch } from '@/lib/dummyData';
-import { FoodItem, MealEntry, DayOfWeek, MealTime, Category, HistoryEntry } from '@/lib/types';
+import {
+  addDays,
+  DAYS,
+  formatDate,
+  getWeekDatesFromTitle,
+  getWeekDatesFromWeekStart,
+  getWeekMetaFromStart,
+  getWeekRangeLabel,
+  getWeekStartForMonthWeek,
+  getWeekStartFromTitle,
+  parseLocalDate
+} from '@/lib/dateUtils';
+import { dummySettings, dummyTodayLunch } from '@/lib/dummyData';
+import { FoodItem, MealEntry, DayOfWeek, MealTime, Category, HistoryEntry, Settings, TodayLunch } from '@/lib/types';
 import { DroppableCell } from './DroppableCell';
 import { DraggableFoodItem } from './DraggableFoodItem';
-import { ImagePlus, Download, BellRing, Save, ArrowLeft, Trash2, Plus, ChevronLeft, ChevronRight, Camera, Lock, Eye, EyeOff, List, History, Edit2 } from 'lucide-react';
+import { ImagePlus, Download, Save, ArrowLeft, Trash2, Plus, ChevronLeft, ChevronRight, Camera, Eye, EyeOff, List, History, Edit2 } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import jsPDF from 'jspdf';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import ImageCropModal from './ImageCropModal';
 
-const ADMIN_ID = 'ys';
-const ADMIN_PW = 'ys1004!';
-
 
 const TIMES: MealTime[] = ['아침', '점심', '저녁'];
 const CATEGORIES = ['밥', '국', '반찬', '기타'] as const;
 const CHOSUNGS = ['전체', 'ㄱ', 'ㄴ', 'ㄷ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅅ', 'ㅇ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'];
+const AUTH_STORAGE_KEY = 'mealAdminAuth';
+const AUTH_CHANGE_EVENT = 'mealAdminAuthChanged';
+
+type MealHistoryRow = {
+  id: number;
+  week_title: string | null;
+  menus: MealEntry[];
+  settings: Settings;
+  today_lunch: TodayLunch | null;
+};
+
+type ReviewFood = Pick<FoodItem, 'name' | 'category' | 'origin'> & {
+  checked: boolean;
+};
+
+type AiFoodCandidate = {
+  name?: unknown;
+  category?: unknown;
+  origin?: unknown;
+};
+
+type AiMenuEntry = {
+  day: DayOfWeek;
+  time: MealTime;
+  foods: string[];
+};
+
+type AiAnalyzeResponse = {
+  all_extracted_foods?: AiFoodCandidate[];
+  new_foods?: AiFoodCandidate[];
+  menus?: AiMenuEntry[];
+  error?: string;
+};
+
+type AdminLoginResponse = {
+  ok: boolean;
+  message?: string;
+};
+
+const getAdminAuthSnapshot = () => (
+  typeof window !== 'undefined' && sessionStorage.getItem(AUTH_STORAGE_KEY) === 'true'
+);
+
+const subscribeAdminAuth = (onStoreChange: () => void) => {
+  if (typeof window === 'undefined') return () => {};
+
+  const handleChange = () => onStoreChange();
+  window.addEventListener('storage', handleChange);
+  window.addEventListener(AUTH_CHANGE_EVENT, handleChange);
+
+  return () => {
+    window.removeEventListener('storage', handleChange);
+    window.removeEventListener(AUTH_CHANGE_EVENT, handleChange);
+  };
+};
+
+const setStoredAdminAuth = (value: boolean) => {
+  if (typeof window === 'undefined') return;
+
+  if (value) {
+    sessionStorage.setItem(AUTH_STORAGE_KEY, 'true');
+  } else {
+    sessionStorage.removeItem(AUTH_STORAGE_KEY);
+  }
+  window.dispatchEvent(new Event(AUTH_CHANGE_EVENT));
+};
+
+const getErrorMessage = (error: unknown) => (
+  error instanceof Error ? error.message : '알 수 없는 오류'
+);
+
+const resolveWeekStart = (weekTitle: string, settings?: Partial<Settings>) => (
+  getWeekStartFromTitle(weekTitle) || settings?.weekStart || formatDate(getWeekDatesFromTitle(weekTitle)[0])
+);
+
+const normalizeSettingsWeekStart = (settings: Settings, weekTitle = settings.weekTitle): Settings => ({
+  ...settings,
+  weekStart: resolveWeekStart(weekTitle, settings)
+});
+
+const getHistoryWeekStart = (entry: Pick<HistoryEntry, 'weekTitle' | 'settings'>) => (
+  resolveWeekStart(entry.weekTitle, entry.settings)
+);
+
+const sortMealHistoryDesc = (a: MealHistoryRow, b: MealHistoryRow) => {
+  const aStart = resolveWeekStart(a.week_title || '', a.settings);
+  const bStart = resolveWeekStart(b.week_title || '', b.settings);
+  return bStart.localeCompare(aStart);
+};
+
+const toHistoryEntry = (row: MealHistoryRow): HistoryEntry => {
+  const weekTitle = row.week_title || '';
+  return {
+    id: row.id,
+    weekTitle,
+    menus: row.menus,
+    settings: normalizeSettingsWeekStart(row.settings, weekTitle),
+    todayLunch: row.today_lunch || undefined
+  };
+};
+
+const applyHistoryOrder = (entries: HistoryEntry[], order?: number[]) => {
+  if (!Array.isArray(order)) return entries;
+
+  return [...entries].sort((a, b) => {
+    const idxA = order.indexOf(a.id);
+    const idxB = order.indexOf(b.id);
+    if (idxA === -1 && idxB === -1) return 0;
+    if (idxA === -1) return 1;
+    if (idxB === -1) return -1;
+    return idxA - idxB;
+  });
+};
+
+const isCategory = (value: unknown): value is Category => (
+  CATEGORIES.includes(value as Category)
+);
+
+const normalizeAiFood = (food: AiFoodCandidate, foodDb: FoodItem[]): ReviewFood | null => {
+  if (typeof food.name !== 'string') return null;
+
+  const name = food.name.trim();
+  if (!name) return null;
+
+  const category = isCategory(food.category) ? food.category : '기타';
+  const origin = typeof food.origin === 'string' ? food.origin.trim() : undefined;
+  const alreadyExists = foodDb.some(db => db.name.trim() === name);
+
+  return {
+    name,
+    category,
+    origin: origin || undefined,
+    checked: !alreadyExists
+  };
+};
 
 const getChosungGroup = (char: string) => {
   const mapping = ['ㄱ', 'ㄱ', 'ㄴ', 'ㄷ', 'ㄷ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅂ', 'ㅅ', 'ㅅ', 'ㅇ', 'ㅈ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'];
@@ -78,18 +223,18 @@ function getCurrentWeekOfMonth(): { month: number; week: number } {
 
 export default function MealAdminView() {
   // 로그인 상태
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const isAuthenticated = useSyncExternalStore(subscribeAdminAuth, getAdminAuthSnapshot, () => false);
   const [loginId, setLoginId] = useState('');
   const [loginPw, setLoginPw] = useState('');
   const [loginError, setLoginError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   // 기존 상태들 (훅 규칙 준수를 위해 early return 전에 선언)
   const [menus, setMenus] = useState<MealEntry[]>([]);
   const [settings, setSettings] = useState(dummySettings);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Category>('반찬');
-  const [bgImageFile, setBgImageFile] = useState<string | null>(null);
   const [todayLunch, setTodayLunch] = useState(dummyTodayLunch);
   const [foodDb, setFoodDb] = useState<FoodItem[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -127,8 +272,8 @@ export default function MealAdminView() {
 
   // AI 관련 상태
   const [aiStep, setAiStep] = useState<'input' | 'review'>('input');
-  const [reviewFoods, setReviewFoods] = useState<{name: string, category: Category, origin?: string, checked: boolean}[]>([]);
-  const [extractedMenuData, setExtractedMenuData] = useState<{day: DayOfWeek, time: MealTime, foods: string[]}[]>([]);
+  const [reviewFoods, setReviewFoods] = useState<ReviewFood[]>([]);
+  const [extractedMenuData, setExtractedMenuData] = useState<AiMenuEntry[]>([]);
   const [aiImagePreview, setAiImagePreview] = useState<string | null>(null);
 
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -141,11 +286,6 @@ export default function MealAdminView() {
       },
     })
   );
-
-  useEffect(() => {
-    const auth = sessionStorage.getItem('mealAdminAuth');
-    if (auth === 'true') setIsAuthenticated(true);
-  }, []);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -169,45 +309,20 @@ export default function MealAdminView() {
       
       let historyEntries: HistoryEntry[] = [];
       if (historyData) {
-        const sorted = [...historyData].sort((a: any, b: any) => {
-          const parse = (title: string) => {
-            const match = title.match(/(\d+)\s*월\s*(\d+)\s*주/);
-            if (!match) return { month: 0, week: 0 };
-            return { month: parseInt(match[1]), week: parseInt(match[2]) };
-          };
-          const pa = parse(a.week_title || '');
-          const pb = parse(b.week_title || '');
-          if (pa.month !== pb.month) return pb.month - pa.month;
-          return pb.week - pa.week;
-        });
-
-        historyEntries = sorted.map(h => ({
-          id: h.id,
-          weekTitle: h.week_title,
-          menus: h.menus,
-          settings: h.settings,
-          todayLunch: h.today_lunch
-        }));
+        historyEntries = historyData
+          .slice()
+          .sort(sortMealHistoryDesc)
+          .map(toHistoryEntry);
 
         // Apply manual order
-        const order = stateData?.settings?.historyOrder;
-        if (order && Array.isArray(order)) {
-          historyEntries.sort((a, b) => {
-            const idxA = order.indexOf(a.id);
-            const idxB = order.indexOf(b.id);
-            if (idxA === -1 && idxB === -1) return 0;
-            if (idxA === -1) return 1;
-            if (idxB === -1) return -1;
-            return idxA - idxB;
-          });
-        }
+        historyEntries = applyHistoryOrder(historyEntries, stateData?.settings?.historyOrder);
         setHistory(historyEntries);
       }
 
       // 4. 초기 표시 데이터 결정
       const today = new Date();
       const todayIdx = historyEntries.findIndex((h) => {
-        const dates = getWeekDatesFromTitle(h.weekTitle);
+        const dates = getWeekDatesFromWeekStart(getHistoryWeekStart(h));
         return dates.some(d => 
           d.getDate() === today.getDate() && 
           d.getMonth() === today.getMonth() && 
@@ -256,6 +371,10 @@ export default function MealAdminView() {
 
   // 3분마다 자동 저장 (180,000ms)
   useEffect(() => {
+    handleSaveRef.current = handleSave;
+  });
+
+  useEffect(() => {
     if (!isAuthenticated) return;
 
     const interval = setInterval(() => {
@@ -265,14 +384,32 @@ export default function MealAdminView() {
     return () => clearInterval(interval);
   }, [isAuthenticated]); // menus/settings/todayLunch 제거: 편집마다 타이머가 리셋되지 않도록
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (loginId === ADMIN_ID && loginPw === ADMIN_PW) {
-      setIsAuthenticated(true);
-      sessionStorage.setItem('mealAdminAuth', 'true');
-      setLoginError('');
-    } else {
-      setLoginError('아이디 또는 비밀번호가 올바르지 않습니다.');
+
+    setIsLoggingIn(true);
+    setLoginError('');
+
+    try {
+      const response = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: loginId, password: loginPw })
+      });
+      const result = await response.json() as AdminLoginResponse;
+
+      if (!response.ok || !result.ok) {
+        setLoginError(result.message || '아이디 또는 비밀번호가 올바르지 않습니다.');
+        return;
+      }
+
+      setStoredAdminAuth(true);
+      setLoginPw('');
+    } catch (error) {
+      console.error('Admin login failed:', error);
+      setLoginError('로그인 중 오류가 발생했습니다.');
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
@@ -328,9 +465,10 @@ export default function MealAdminView() {
 
             <button
               type="submit"
-              className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-3 rounded-lg font-bold hover:from-orange-600 hover:to-orange-700 transition-all shadow-md hover:shadow-lg"
+              disabled={isLoggingIn}
+              className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-3 rounded-lg font-bold hover:from-orange-600 hover:to-orange-700 transition-all shadow-md hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              로그인
+              {isLoggingIn ? '로그인 중...' : '로그인'}
             </button>
 
             <div className="text-center">
@@ -344,16 +482,19 @@ export default function MealAdminView() {
     );
   }
 
-  const handleSave = async (options?: boolean | React.MouseEvent) => {
+  async function handleSave(options?: boolean | React.MouseEvent) {
     const showNotification = typeof options === 'boolean' ? options : true;
     if (!isLoaded) return; // 데이터 로드 전엔 저장 금지 (stale closure 방어)
+    const settingsForSave = normalizeSettingsWeekStart(settings);
+    const weekStartForSave = settingsForSave.weekStart;
+
     // 1. 현재 상태 업데이트 (upsert)
     const { error: stateError } = await supabase
       .from('current_meal_state')
       .upsert({
         id: 1,
         menus,
-        settings,
+        settings: settingsForSave,
         today_lunch: todayLunch,
         updated_at: new Date().toISOString()
       });
@@ -364,18 +505,19 @@ export default function MealAdminView() {
       return;
     }
 
-    // 2. 같은 주차 제목이 있으면 덮어쓰기, 없으면 새로 추가
-    const existing = history.find(h => h.weekTitle === settings.weekTitle);
+    // 2. 같은 주차 제목 또는 같은 날짜 범위가 있으면 덮어쓰기, 없으면 새로 추가
+    const existing = history.find(h => h.weekTitle === settingsForSave.weekTitle)
+      || history.find(h => getHistoryWeekStart(h) === weekStartForSave);
     let historyError;
     if (existing) {
       ({ error: historyError } = await supabase
         .from('meal_history')
-        .update({ menus, settings, today_lunch: todayLunch })
+        .update({ week_title: settingsForSave.weekTitle, menus, settings: settingsForSave, today_lunch: todayLunch })
         .eq('id', existing.id));
     } else {
       ({ error: historyError } = await supabase
         .from('meal_history')
-        .insert({ week_title: settings.weekTitle, menus, settings, today_lunch: todayLunch }));
+        .insert({ week_title: settingsForSave.weekTitle, menus, settings: settingsForSave, today_lunch: todayLunch }));
     }
 
     if (historyError) {
@@ -385,52 +527,25 @@ export default function MealAdminView() {
     // 3. 최신 히스토리 다시 불러오기
     const { data: historyData } = await supabase.from('meal_history').select('*');
     if (historyData) {
-      const sorted = [...historyData].sort((a: any, b: any) => {
-        const parse = (title: string) => {
-          const match = title.match(/(\d+)\s*월\s*(\d+)\s*주/);
-          if (!match) return { month: 0, week: 0 };
-          return { month: parseInt(match[1]), week: parseInt(match[2]) };
-        };
-        const pa = parse(a.week_title || '');
-        const pb = parse(b.week_title || '');
-        if (pa.month !== pb.month) return pb.month - pa.month;
-        return pb.week - pa.week;
-      });
-
-      const historyEntries = sorted.map(h => ({
-        id: h.id,
-        weekTitle: h.week_title,
-        menus: h.menus,
-        settings: h.settings,
-        todayLunch: h.today_lunch
-      }));
+      let historyEntries = historyData
+        .slice()
+        .sort(sortMealHistoryDesc)
+        .map(toHistoryEntry);
 
       // Apply manual order
-      const order = settings.historyOrder;
-      if (order && Array.isArray(order)) {
-        historyEntries.sort((a, b) => {
-          const idxA = order.indexOf(a.id);
-          const idxB = order.indexOf(b.id);
-          if (idxA === -1 && idxB === -1) return 0;
-          if (idxA === -1) return 1;
-          if (idxB === -1) return -1;
-          return idxA - idxB;
-        });
-      }
+      historyEntries = applyHistoryOrder(historyEntries, settingsForSave.historyOrder);
       setHistory(historyEntries);
     }
 
-    setLastSavedData(JSON.stringify({ menus, settings, todayLunch }));
+    setSettings(settingsForSave);
+    setLastSavedData(JSON.stringify({ menus, settings: settingsForSave, todayLunch }));
 
     if (showNotification) {
       alert('저장되었습니다! 일반 사용자 화면에 반영됩니다.');
     } else {
       console.log('Auto-saved at:', new Date().toLocaleTimeString());
     }
-  };
-
-  // 자동저장 interval이 항상 최신 handleSave를 참조하도록 ref 갱신 (훅 규칙 준수: early return 이후 렌더 중 동기 업데이트)
-  handleSaveRef.current = handleSave;
+  }
 
   const handleDeleteHistory = async (id: number) => {
     if (!confirm('이 식단 기록을 영구히 삭제하시겠습니까?')) return;
@@ -477,20 +592,17 @@ export default function MealAdminView() {
     const hasChanges = lastSavedData !== currentData;
 
     if (!hasChanges || confirm(`'${selected.weekTitle}' 식단표를 불러오시겠습니까?\n저장하지 않은 캔버스의 변경사항은 덮어씌워집니다.`)) {
-      setMenus(selected.menus);
-      setSettings({
+      const selectedSettings = normalizeSettingsWeekStart({
         ...selected.settings,
         favoriteFoodIds: settings.favoriteFoodIds,
         historyOrder: settings.historyOrder,
-      });
+      }, selected.weekTitle);
+      setMenus(selected.menus);
+      setSettings(selectedSettings);
       if (selected.todayLunch) setTodayLunch(selected.todayLunch);
       setLastSavedData(JSON.stringify({
         menus: selected.menus,
-        settings: {
-          ...selected.settings,
-          favoriteFoodIds: settings.favoriteFoodIds,
-          historyOrder: settings.historyOrder,
-        },
+        settings: selectedSettings,
         todayLunch: selected.todayLunch
       }));
     }
@@ -676,33 +788,12 @@ export default function MealAdminView() {
     });
   };
 
-  const moveFood = (day: DayOfWeek, time: MealTime, foodId: string, direction: 'up' | 'down') => {
-    setMenus((prev) => {
-      const entryIdx = prev.findIndex(m => m.day === day && m.time === time);
-      if (entryIdx === -1) return prev;
-
-      const newMenus = [...prev];
-      const newFoodIds = [...newMenus[entryIdx].foodIds];
-      const idx = newFoodIds.indexOf(foodId);
-      if (idx === -1) return prev;
-
-      const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
-      if (targetIdx < 0 || targetIdx >= newFoodIds.length) return prev;
-
-      // Swap
-      [newFoodIds[idx], newFoodIds[targetIdx]] = [newFoodIds[targetIdx], newFoodIds[idx]];
-      newMenus[entryIdx] = { ...newMenus[entryIdx], foodIds: newFoodIds };
-      return newMenus;
-    });
-  };
-
   const handleBgImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
       reader.onload = (event) => {
         const url = event.target?.result as string;
-        setBgImageFile(url);
         const newSettings = { ...settings, backgroundImageUrl: url };
         setSettings(newSettings);
         setIsBgModalOpen(false);
@@ -872,24 +963,48 @@ export default function MealAdminView() {
 
   if (!isLoaded) return <div className="h-screen flex items-center justify-center">로딩중...</div>;
 
+  const weekDates = getWeekDatesFromWeekStart(resolveWeekStart(settings.weekTitle || '', settings));
+
   // 새로만들기 모달용 파생값
-  const isDuplicateSelected = history.some(h => h.weekTitle === buildWeekTitle(selectedMonth, selectedWeek));
+  const selectedWeekTitle = buildWeekTitle(selectedMonth, selectedWeek);
+  const selectedWeekStart = formatDate(getWeekStartForMonthWeek(selectedMonth, selectedWeek));
+  const selectedWeekRange = getWeekRangeLabel(selectedWeekStart);
+  const duplicateWeek = history.find(h => getHistoryWeekStart(h) === selectedWeekStart);
+  const isDuplicateSelected = !!duplicateWeek;
+  const weekOptions = [1, 2, 3, 4, 5].map(week => {
+    const weekStart = formatDate(getWeekStartForMonthWeek(selectedMonth, week));
+    return {
+      week,
+      weekStart,
+      range: getWeekRangeLabel(weekStart),
+      duplicate: history.find(h => getHistoryWeekStart(h) === weekStart)
+    };
+  });
+  const makeSettingsForSelectedWeek = (baseSettings: Settings): Settings => ({
+    ...baseSettings,
+    weekTitle: selectedWeekTitle,
+    weekStart: selectedWeekStart
+  });
 
   const nextAvailableWeek = (() => {
     if (history.length === 0) return null;
-    let maxMonth = 0, maxWeek = 0;
-    history.forEach(h => {
-      const match = h.weekTitle.match(/(\d+)\s*월\s*(\d+)\s*주/);
-      if (match) {
-        const m = parseInt(match[1]), w = parseInt(match[2]);
-        if (m > maxMonth || (m === maxMonth && w > maxWeek)) { maxMonth = m; maxWeek = w; }
-      }
-    });
-    if (maxMonth === 0) return null;
-    let nextMonth = maxMonth, nextWeek = maxWeek + 1;
-    if (nextWeek > 5) { nextWeek = 1; nextMonth = (maxMonth % 12) + 1; }
-    if (history.some(h => h.weekTitle === buildWeekTitle(nextMonth, nextWeek))) return null;
-    return { month: nextMonth, week: nextWeek };
+
+    const latestWeekStart = history
+      .map(getHistoryWeekStart)
+      .sort()
+      .pop();
+    if (!latestWeekStart) return null;
+
+    const nextWeekStart = formatDate(addDays(parseLocalDate(latestWeekStart), 7));
+    if (history.some(h => getHistoryWeekStart(h) === nextWeekStart)) return null;
+
+    const { month, week } = getWeekMetaFromStart(nextWeekStart);
+    return {
+      month,
+      week,
+      weekStart: nextWeekStart,
+      range: getWeekRangeLabel(nextWeekStart)
+    };
   })();
 
   return (
@@ -900,44 +1015,44 @@ export default function MealAdminView() {
       {/* Left Area: A4 Canvas Preview */}
       <div className="flex-1 overflow-y-auto flex flex-col items-center p-3 md:p-0">
         {/* Header */}
-        <div className="flex justify-between w-full max-w-[800px] mb-3 md:mb-4">
-          <div className="flex items-center gap-2 md:gap-4">
-            <Link href="/" className="p-2 bg-gray-200 text-gray-700 rounded-full hover:bg-gray-300 transition-colors" title="사용자 화면으로 돌아가기">
+        <div className="flex w-full max-w-[800px] items-center gap-3 mb-3 md:mb-4">
+          <div className="flex shrink-0 min-w-fit items-center gap-2 md:gap-4">
+            <Link href="/" className="shrink-0 p-2 bg-gray-200 text-gray-700 rounded-full hover:bg-gray-300 transition-colors" title="사용자 화면으로 돌아가기">
               <ArrowLeft size={18} />
             </Link>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 min-w-0">
               <img src="/images/yslogo.png" alt="로고" className="h-6 md:h-8 w-auto object-contain" />
-              <h1 className="text-base md:text-2xl font-bold text-gray-800">식단표 관리</h1>
+              <h1 className="text-base md:text-2xl font-bold text-gray-800 whitespace-nowrap leading-tight">식단표 관리</h1>
             </div>
           </div>
-          <div className="flex gap-1.5 md:gap-2 items-center">
+          <div className="ml-auto flex min-w-0 max-w-full gap-1.5 md:gap-2 items-center justify-end overflow-x-auto pb-1 -mb-1">
             <button 
               onClick={() => setIsBgModalOpen(true)}
-              className="bg-white p-2 md:px-3 md:py-2 rounded shadow text-sm font-medium hover:bg-gray-50 flex items-center gap-2"
-              title="배경 선택/업로드"
+              className="bg-white p-2 md:px-3 md:py-2 rounded shadow text-sm font-medium hover:bg-gray-50 flex shrink-0 items-center gap-2 whitespace-nowrap"
+              title="배경"
             >
               <ImagePlus size={16} />
-              <span className="hidden md:inline">배경 선택/업로드</span>
+              <span className="hidden md:inline whitespace-nowrap">배경</span>
             </button>
             <button 
               onClick={() => setIsHistoryManageModalOpen(true)} 
-              className="bg-gray-600 text-white p-2 md:px-3 md:py-2 rounded shadow text-sm font-medium hover:bg-gray-700 flex items-center gap-2" 
+              className="bg-gray-600 text-white p-2 md:px-3 md:py-2 rounded shadow text-sm font-medium hover:bg-gray-700 flex shrink-0 items-center gap-2 whitespace-nowrap" 
               title="히스토리 관리"
             >
               <List size={16} />
-              <span className="hidden md:inline">기록 관리</span>
+              <span className="hidden md:inline whitespace-nowrap">기록 관리</span>
             </button>
-            <button onClick={handleReset} className="bg-red-500 text-white p-2 md:px-3 md:py-2 rounded shadow text-sm font-medium hover:bg-red-600 flex items-center gap-2" title="새로 만들기">
+            <button onClick={handleReset} className="bg-red-500 text-white p-2 md:px-3 md:py-2 rounded shadow text-sm font-medium hover:bg-red-600 flex shrink-0 items-center gap-2 whitespace-nowrap" title="새로 만들기">
               <Plus size={16} />
-              <span className="hidden md:inline">새로 만들기</span>
+              <span className="hidden md:inline whitespace-nowrap">새로 만들기</span>
             </button>
-            <button onClick={handlePdfDownload} className="bg-blue-600 text-white p-2 md:px-3 md:py-2 rounded shadow text-sm font-medium hover:bg-blue-700 flex items-center gap-2 hidden md:flex" title="PDF 다운로드">
+            <button onClick={handlePdfDownload} className="bg-blue-600 text-white p-2 md:px-3 md:py-2 rounded shadow text-sm font-medium hover:bg-blue-700 shrink-0 items-center gap-2 whitespace-nowrap hidden md:flex" title="PDF 다운로드">
               <Download size={16} />
-              <span className="hidden md:inline">PDF 다운로드</span>
+              <span className="hidden md:inline whitespace-nowrap">PDF 다운로드</span>
             </button>
-            <button onClick={handleSave} className="bg-green-600 text-white p-2 md:px-3 md:py-2 rounded shadow text-sm font-medium hover:bg-green-700 flex items-center gap-2" title="저장하기">
+            <button onClick={handleSave} className="bg-green-600 text-white p-2 md:px-3 md:py-2 rounded shadow text-sm font-medium hover:bg-green-700 flex shrink-0 items-center gap-2 whitespace-nowrap" title="저장하기">
               <Save size={16} />
-              <span className="hidden md:inline">저장하기</span>
+              <span className="hidden md:inline whitespace-nowrap">저장하기</span>
             </button>
           </div>
         </div>
@@ -952,7 +1067,11 @@ export default function MealAdminView() {
                 <button onClick={() => handleLoadHistory('prev')} className="p-1 text-gray-400"><ChevronLeft size={16} /></button>
                 <input 
                   type="text" value={settings.weekTitle}
-                  onChange={(e) => setSettings({...settings, weekTitle: e.target.value})}
+                  onChange={(e) => setSettings({
+                    ...settings,
+                    weekTitle: e.target.value,
+                    weekStart: getWeekStartFromTitle(e.target.value) || settings.weekStart
+                  })}
                   className="text-center bg-transparent border-b border-gray-300 focus:outline-none font-bold text-gray-700 text-sm w-48"
                   placeholder="예: 3월 1주차 식단표"
                 />
@@ -964,9 +1083,19 @@ export default function MealAdminView() {
                 <thead>
                   <tr>
                     <th className="border border-gray-200 p-1.5 w-10 bg-gray-50"></th>
-                    {DAYS.map(day => (
-                      <th key={day} className="border border-gray-200 p-1.5 text-center bg-gray-50 font-bold text-xs">{day}</th>
-                    ))}
+                    {DAYS.map((day, i) => {
+                      const date = weekDates[i];
+                      return (
+                        <th key={day} className="border border-gray-200 p-1.5 text-center bg-gray-50 font-bold text-xs">
+                          <div>{day}</div>
+                          {date && (
+                            <div className="mt-0.5 text-[11px] font-semibold text-gray-500">
+                              {date.getMonth() + 1}/{date.getDate()}
+                            </div>
+                          )}
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody>
@@ -991,7 +1120,6 @@ export default function MealAdminView() {
                                       day={day}
                                       time={time}
                                       idx={idx}
-                                      total={foods.length}
                                       onRemove={() => removeFood(day, time, food.id)}
                                       onEdit={() => {
                                         setEditingFood(food);
@@ -1065,7 +1193,11 @@ export default function MealAdminView() {
                 <input 
                   type="text" 
                   value={settings.weekTitle}
-                  onChange={(e) => setSettings({...settings, weekTitle: e.target.value})}
+                  onChange={(e) => setSettings({
+                    ...settings,
+                    weekTitle: e.target.value,
+                    weekStart: getWeekStartFromTitle(e.target.value) || settings.weekStart
+                  })}
                   className="text-center bg-transparent border-b border-gray-400 focus:outline-none font-bold text-gray-700 w-64"
                   placeholder="예: 3월 1주차 식단표"
                 />
@@ -1083,11 +1215,19 @@ export default function MealAdminView() {
               <thead>
                 <tr>
                   <th className="border border-gray-400 p-2 w-12 text-center bg-gray-100"></th>
-                  {DAYS.map(day => (
-                    <th key={day} className="border border-gray-400 p-2 text-center bg-gray-50 font-bold">
-                      {day}요일
-                    </th>
-                  ))}
+                  {DAYS.map((day, i) => {
+                    const date = weekDates[i];
+                    return (
+                      <th key={day} className="border border-gray-400 p-2 text-center bg-gray-50 font-bold">
+                        <div>{day}요일</div>
+                        {date && (
+                          <div className="mt-1 text-sm font-semibold text-gray-600">
+                            {date.getMonth() + 1}/{date.getDate()}
+                          </div>
+                        )}
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
@@ -1115,7 +1255,6 @@ export default function MealAdminView() {
                                     day={day}
                                     time={time}
                                     idx={idx}
-                                    total={foods.length}
                                     onRemove={() => removeFood(day, time, food.id)}
                                     onEdit={() => {
                                       setEditingFood(food);
@@ -1480,11 +1619,17 @@ export default function MealAdminView() {
                   value={selectedWeek}
                   onChange={(e) => setSelectedWeek(Number(e.target.value))}
                 >
-                  {[1, 2, 3, 4, 5].map(w => (
-                    <option key={w} value={w}>{w}주차</option>
+                  {weekOptions.map(({ week, range, duplicate }) => (
+                    <option key={week} value={week}>
+                      {week}주차 ({range}){duplicate ? ` - ${duplicate.weekTitle}와 같은 기간` : ''}
+                    </option>
                   ))}
                 </select>
               </div>
+            </div>
+
+            <div className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 mb-3">
+              선택 기간: <span className="font-semibold text-gray-700">{selectedWeekRange}</span>
             </div>
 
             {/* 다음 주차 추천 배지 */}
@@ -1493,7 +1638,7 @@ export default function MealAdminView() {
                 onClick={() => { setSelectedMonth(nextAvailableWeek.month); setSelectedWeek(nextAvailableWeek.week); }}
                 className="text-xs text-blue-600 bg-blue-50 border border-blue-200 px-3 py-1 rounded-full mb-4 hover:bg-blue-100 self-start transition-colors"
               >
-                다음 주차 추천: {nextAvailableWeek.month}월 {nextAvailableWeek.week}주차 →
+                다음 주차 추천: {nextAvailableWeek.month}월 {nextAvailableWeek.week}주차 ({nextAvailableWeek.range}) →
               </button>
             )}
             {!nextAvailableWeek && <div className="mb-4" />}
@@ -1501,7 +1646,7 @@ export default function MealAdminView() {
             {/* 중복 경고 — 조건부 */}
             {isDuplicateSelected && (
               <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
-                이미 &apos;{buildWeekTitle(selectedMonth, selectedWeek)}&apos; 기록이 존재합니다. 다른 주차를 선택해 주세요.
+                이미 &apos;{duplicateWeek?.weekTitle}&apos;와 같은 기간({selectedWeekRange})입니다. 다음 주차를 선택해 주세요.
               </div>
             )}
 
@@ -1511,8 +1656,7 @@ export default function MealAdminView() {
               <button
                 disabled={isDuplicateSelected}
                 onClick={() => {
-                  const newTitle = buildWeekTitle(selectedMonth, selectedWeek);
-                  setSettings({ ...settings, weekTitle: newTitle });
+                  setSettings(makeSettingsForSelectedWeek(settings));
                   setIsWeekModalOpen(false);
                 }}
                 className="text-left p-4 border-2 border-gray-200 rounded-xl hover:border-blue-400 hover:bg-blue-50 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
@@ -1525,9 +1669,8 @@ export default function MealAdminView() {
               <button
                 disabled={isDuplicateSelected}
                 onClick={() => {
-                  const newTitle = buildWeekTitle(selectedMonth, selectedWeek);
                   setMenus([]);
-                  setSettings({ ...settings, weekTitle: newTitle });
+                  setSettings(makeSettingsForSelectedWeek(settings));
                   setIsWeekModalOpen(false);
                 }}
                 className="text-left p-4 border-2 border-gray-200 rounded-xl hover:border-red-400 hover:bg-red-50 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
@@ -1541,8 +1684,7 @@ export default function MealAdminView() {
               <button
                 disabled={isDuplicateSelected}
                 onClick={() => {
-                  const newTitle = buildWeekTitle(selectedMonth, selectedWeek);
-                  setSettings({ ...settings, weekTitle: newTitle });
+                  setSettings(makeSettingsForSelectedWeek(settings));
                   setMenus([]);
                   setIsWeekModalOpen(false);
                   setIsAIModalOpen(true);
@@ -1565,9 +1707,12 @@ export default function MealAdminView() {
                       if (!e.target.value) return;
                       const src = history.find(h => String(h.id) === e.target.value);
                       if (src) {
-                        const newTitle = buildWeekTitle(selectedMonth, selectedWeek);
                         setMenus(src.menus);
-                        setSettings({ ...src.settings, weekTitle: newTitle, favoriteFoodIds: settings.favoriteFoodIds, historyOrder: settings.historyOrder });
+                        setSettings(makeSettingsForSelectedWeek({
+                          ...src.settings,
+                          favoriteFoodIds: settings.favoriteFoodIds,
+                          historyOrder: settings.historyOrder
+                        }));
                         setIsWeekModalOpen(false);
                       }
                       e.target.value = '';
@@ -1751,7 +1896,7 @@ export default function MealAdminView() {
                     </label>
                     {aiImagePreview && (
                       <div className="relative aspect-video rounded-lg overflow-hidden border">
-                        <img src={aiImagePreview} className="w-full h-full object-contain" />
+                        <img src={aiImagePreview} alt="AI 분석용 식단표 미리보기" className="w-full h-full object-contain" />
                         <button 
                           onClick={() => setAiImagePreview(null)}
                           className="absolute top-1 right-1 bg-black/50 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs"
@@ -1786,28 +1931,24 @@ export default function MealAdminView() {
                       });
 
                       if (!response.ok) {
-                        const errorData = await response.json();
+                        const errorData = await response.json() as AiAnalyzeResponse;
                         throw new Error(errorData.error || '분석 중 오류가 발생했습니다.');
                       }
 
-                      const data = await response.json();
+                      const data = await response.json() as AiAnalyzeResponse;
 
                       // 리뷰 목록 구성
                       const foodsFromAI = data.all_extracted_foods || data.new_foods || [];
-                      setReviewFoods(foodsFromAI.map((f: any) => {
-                        const name = f.name.trim();
-                        const alreadyExists = foodDb.some(db => db.name.trim() === name);
-                        return {
-                          ...f,
-                          name,
-                          checked: !alreadyExists // DB에 없으면 자동으로 체크
-                        };
-                      }));
+                      setReviewFoods(
+                        foodsFromAI
+                          .map(food => normalizeAiFood(food, foodDb))
+                          .filter((food): food is ReviewFood => food !== null)
+                      );
                       setExtractedMenuData(data.menus || []);
                       setAiStep('review');
-                    } catch (err: any) {
+                    } catch (err: unknown) {
                       console.error(err);
-                      alert('AI 분석 실패: ' + err.message);
+                      alert('AI 분석 실패: ' + getErrorMessage(err));
                     } finally {
                       setIsAnalyzing(false);
                     }
@@ -1917,7 +2058,13 @@ export default function MealAdminView() {
                     onClick={async () => {
                       setIsAnalyzing(true);
                       try {
-                        const foodsToInsert = reviewFoods.filter(f => f.checked).map(({checked, ...rest}) => rest);
+                        const foodsToInsert = reviewFoods
+                          .filter(food => food.checked)
+                          .map(food => ({
+                            name: food.name,
+                            category: food.category,
+                            origin: food.origin
+                          }));
                         let finalFoodDb = [...foodDb];
                         
                         // 1. 선택한 신규 음식 DB 추가
@@ -1948,8 +2095,8 @@ export default function MealAdminView() {
                         alert(`DB에 ${foodsToInsert.length}개의 음식을 추가하고 식단표 구성을 완료했습니다!`);
                         setIsAIModalOpen(false);
                         setAiStep('input');
-                      } catch (err: any) {
-                        alert('최종 저장 실패: ' + err.message);
+                      } catch (err: unknown) {
+                        alert('최종 저장 실패: ' + getErrorMessage(err));
                       } finally {
                         setIsAnalyzing(false);
                       }
@@ -2225,9 +2372,9 @@ function SortableHistoryItem({ h, onUpdate, onDelete }: { h: HistoryEntry, onUpd
 }
 
 function DraggableGridFood({ 
-  food, day, time, idx, total, onRemove, onEdit 
+  food, day, time, idx, onRemove, onEdit 
 }: { 
-  food: any, day: string, time: string, idx: number, total: number,
+  food: FoodItem, day: string, time: string, idx: number,
   onRemove: () => void,
   onEdit: () => void
 }) {
@@ -2250,9 +2397,9 @@ function DraggableGridFood({
       style={style}
       {...listeners}
       {...attributes}
-      className={`text-[11px] text-center relative group w-full flex flex-col items-center hover:bg-orange-50 hover:ring-1 hover:ring-orange-200 rounded p-1 transition-all cursor-grab active:cursor-grabbing ${isDragging ? 'z-50 opacity-50 shadow-lg' : ''}`}
+      className={`text-[11px] text-center relative group w-full max-w-full flex flex-col items-center hover:bg-orange-50 hover:ring-1 hover:ring-orange-200 rounded p-1 transition-all cursor-grab active:cursor-grabbing ${isDragging ? 'z-50 opacity-50 shadow-lg' : ''}`}
     >
-      <div className="font-bold text-gray-800 leading-tight" style={{ wordBreak: 'keep-all', overflowWrap: 'break-word' }}>{food.name}</div>
+      <div className="font-bold text-gray-800 leading-tight max-w-full break-all" style={{ overflowWrap: 'anywhere' }}>{food.name}</div>
       {food.origin && <div className="text-[9px] text-gray-500 leading-tight">({food.origin})</div>}
       
       {/* 액션 버튼 패널 */}
@@ -2273,9 +2420,9 @@ function DraggableGridFood({
 }
 
 function DraggableGridFoodMobile({ 
-  food, day, time, idx, total, onRemove, onEdit 
+  food, day, time, idx, onRemove, onEdit 
 }: { 
-  food: any, day: string, time: string, idx: number, total: number,
+  food: FoodItem, day: string, time: string, idx: number,
   onRemove: () => void,
   onEdit: () => void
 }) {
@@ -2298,10 +2445,11 @@ function DraggableGridFoodMobile({
       style={style}
       {...listeners}
       {...attributes}
-      className={`text-[9px] text-center relative group w-full flex items-center justify-center gap-0.5 hover:bg-orange-50 hover:ring-1 hover:ring-orange-200 rounded py-0.5 transition-all cursor-grab active:cursor-grabbing ${isDragging ? 'z-50 opacity-50 shadow-lg' : ''}`}
+      className={`text-[9px] text-center relative group w-full max-w-full flex items-center justify-center gap-0.5 hover:bg-orange-50 hover:ring-1 hover:ring-orange-200 rounded py-0.5 transition-all cursor-grab active:cursor-grabbing ${isDragging ? 'z-50 opacity-50 shadow-lg' : ''}`}
     >
       <span 
-        className="font-bold text-gray-800 leading-tight cursor-pointer"
+        className="font-bold text-gray-800 leading-tight cursor-pointer max-w-full break-all"
+        style={{ overflowWrap: 'anywhere' }}
         onClick={(e) => { e.stopPropagation(); onEdit(); }}
       >
         {food.name}

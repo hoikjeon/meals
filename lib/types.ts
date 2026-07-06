@@ -18,6 +18,7 @@ export interface MealEntry {
 
 export interface Settings {
   weekTitle: string;
+  weekStart?: string; // YYYY-MM-DD, 해당 식단 주의 월요일
   titleColor?: string;
   originText: string;
   backgroundImageUrl: string | null;

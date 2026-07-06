@@ -11,10 +11,11 @@ export default function SplashScreen() {
     // 모바일(768px 미만)에서만 표시
     if (window.innerWidth >= 768) return;
 
-    setVisible(true);
+    const showTimer = setTimeout(() => setVisible(true), 0);
     const fadeTimer = setTimeout(() => setFadeOut(true), 1800);
     const hideTimer = setTimeout(() => setVisible(false), 2400);
     return () => {
+      clearTimeout(showTimer);
       clearTimeout(fadeTimer);
       clearTimeout(hideTimer);
     };
