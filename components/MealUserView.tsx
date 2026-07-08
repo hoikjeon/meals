@@ -392,7 +392,7 @@ export default function MealUserView() {
           {/* ===== 모바일 일별 보기 ===== */}
           <div className={`md:hidden ${mobileView === 'daily' ? 'block' : 'hidden'}`}>
             {/* 요일 탭 */}
-            <div className="flex gap-1 overflow-x-auto pb-2 mb-3 scrollbar-hide">
+            <div className="-mx-1 mb-2 flex gap-1 overflow-x-auto px-1 pt-1.5 pb-3 scrollbar-hide">
               {DAYS.map((day, i) => {
                 const isToday = i === todayDayIndex;
                 const isSelected = i === activeSelectedDayIndex;
