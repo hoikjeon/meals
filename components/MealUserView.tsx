@@ -4,7 +4,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { dummyFoodItems, dummyWeeklyMenus, dummySettings, dummyTodayLunch } from '@/lib/dummyData';
-import { HistoryEntry, MealEntry, MealTime, Settings as MealSettings, TodayLunch } from '@/lib/types';
+import { DayOfWeek, FoodItem, HistoryEntry, MealEntry, MealTime, Settings as MealSettings, TodayLunch } from '@/lib/types';
 import { formatDate, getWeekDatesFromTitle, getWeekDatesFromWeekStart, getWeekStartFromTitle, DAYS } from '@/lib/dateUtils';
 import { BellRing, ChevronLeft, ChevronRight, Camera, Download, Settings, CalendarDays, List, ChevronDown } from 'lucide-react';
 import { toPng } from 'html-to-image';
@@ -14,6 +14,76 @@ import { supabase } from '@/lib/supabase';
 
 
 const TIMES: MealTime[] = ['아침', '점심', '저녁'];
+const MENU_NAME_WRAP_SIZE = 8;
+const MENU_SLOT_COUNT = 6;
+
+const splitMenuLine = (line: string) => {
+  const chars = Array.from(line);
+  if (chars.length <= MENU_NAME_WRAP_SIZE) return [line];
+
+  const chunkCount = Math.ceil(chars.length / MENU_NAME_WRAP_SIZE);
+  const baseSize = Math.floor(chars.length / chunkCount);
+  const extraCount = chars.length % chunkCount;
+  const chunks: string[] = [];
+  let cursor = 0;
+
+  for (let i = 0; i < chunkCount; i += 1) {
+    const size = baseSize + (i < extraCount ? 1 : 0);
+    chunks.push(chars.slice(cursor, cursor + size).join(''));
+    cursor += size;
+  }
+
+  return chunks;
+};
+
+const renderMenuName = (name: string) => {
+  const lines = name.split(/\r?\n/);
+  const chunks = lines.flatMap((line) => splitMenuLine(line));
+
+  return chunks.flatMap((chunk, idx) => {
+    if (idx === chunks.length - 1) return chunk;
+    return [chunk, <br key={`menu-name-line-${idx}`} />];
+  });
+};
+
+const getFoodsForMeal = (
+  menus: MealEntry[],
+  foodDb: FoodItem[],
+  day: DayOfWeek,
+  time: MealTime
+) => {
+  const menuEntry = menus.find(m => m.day === day && m.time === time);
+  return menuEntry
+    ? menuEntry.foodIds
+        .map(id => foodDb.find(f => f.id === id))
+        .filter((food): food is FoodItem => Boolean(food))
+    : [];
+};
+
+const getMenuNameLineCount = (name: string) => (
+  name.split(/\r?\n/).reduce((total, line) => total + splitMenuLine(line).length, 0)
+);
+
+const getMenuSlotWeight = (food?: FoodItem) => {
+  if (!food) return 1;
+  return Math.max(2, getMenuNameLineCount(food.name) + 1);
+};
+
+const getMealGridStyle = (
+  menus: MealEntry[],
+  foodDb: FoodItem[],
+  time: MealTime
+): React.CSSProperties => {
+  const foodsByDay = DAYS.map(day => getFoodsForMeal(menus, foodDb, day, time));
+  const slotCount = Math.max(MENU_SLOT_COUNT, ...foodsByDay.map(foods => foods.length));
+  const rowWeights = Array.from({ length: slotCount }, (_, idx) => (
+    Math.max(1, ...foodsByDay.map(foods => getMenuSlotWeight(foods[idx])))
+  ));
+
+  return {
+    gridTemplateRows: rowWeights.map(weight => `minmax(0, ${weight}fr)`).join(' '),
+  };
+};
 
 type MealHistoryRow = {
   id: number;
@@ -234,11 +304,18 @@ export default function MealUserView() {
 
   if (!isLoaded) return <div className="min-h-screen bg-gray-50 flex items-center justify-center">로딩중...</div>;
 
+  const pageBackgroundStyle = {
+    backgroundColor: settings.backgroundColor,
+    backgroundImage: settings.backgroundImageUrl ? `url(${settings.backgroundImageUrl})` : 'none',
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       
       {/* Header */}
-      <header className="w-full bg-white shadow-sm p-4 sticky top-0 z-10 flex justify-between items-center max-w-4xl mx-auto">
+      <header className="w-full bg-white shadow-sm p-4 sticky top-0 z-10 flex justify-between items-center max-w-6xl mx-auto">
         <div className="flex items-center gap-2">
           <img src="/images/yslogo.png" alt="연세척병원 로고" className="h-8 md:h-10 w-auto object-contain" />
           <h1 className="text-lg md:text-xl font-bold text-gray-800 hidden sm:block">식단안내</h1>
@@ -267,13 +344,13 @@ export default function MealUserView() {
         </div>
       </header>
 
-      <div className="flex-1 w-full flex justify-center p-4 md:p-8 bg-gray-50">
-        <main className="w-full max-w-4xl bg-white rounded-2xl shadow-sm border border-gray-200 p-4 md:p-6 flex flex-col gap-6 h-fit">
+      <div className="flex-1 w-full flex justify-center px-3 py-4 sm:px-6 md:py-8" style={pageBackgroundStyle}>
+        <main className="w-full max-w-6xl bg-white/95 backdrop-blur-sm rounded-[28px] shadow-xl border border-white/70 p-4 sm:p-6 md:p-8 flex flex-col gap-7 h-fit">
           
           {/* 주간 식단표 Section */}
           <section className="bg-transparent">
-            <div className="text-center mb-4 md:mb-6">
-              <h1 className="text-xl md:text-3xl font-black drop-shadow-sm mb-2 md:mb-3" style={{ color: settings.titleColor || '#f97316' }}>연세척 주간 식단표</h1>
+            <div className="text-center mb-5 md:mb-8">
+              <h1 className="text-2xl md:text-4xl font-black drop-shadow-sm mb-2 md:mb-4" style={{ color: settings.titleColor || '#f97316' }}>연세척 주간 식단표</h1>
               <div className="flex justify-center items-center gap-3 md:gap-4 mb-2">
                 <button 
                   onClick={() => loadHistoryEntry(currentHistoryIndex - 1)}
@@ -282,7 +359,7 @@ export default function MealUserView() {
                 >
                   <ChevronLeft size={20} />
                 </button>
-                <h2 className="text-sm md:text-lg font-bold text-center text-gray-800 border-b border-gray-400 pb-1 px-2 md:px-4">
+                <h2 className="text-base md:text-xl font-bold text-center text-gray-800 border-b-2 border-gray-400 pb-1 px-3 md:px-6">
                   {settings.weekTitle || '이번 주 식단'}
                 </h2>
                 <button 
@@ -366,7 +443,7 @@ export default function MealUserView() {
                         <div className="flex flex-col gap-1.5">
                           {foods.map(food => (
                             <div key={food.id} className="flex items-baseline gap-1">
-                              <span className="text-sm font-semibold text-gray-800">{food.name}</span>
+                              <span className="text-sm font-semibold text-gray-800">{renderMenuName(food.name)}</span>
                               {food.origin && <span className="text-[10px] text-gray-400">({food.origin})</span>}
                             </div>
                           ))}
@@ -384,46 +461,50 @@ export default function MealUserView() {
           {/* ===== 모바일 일주일 보기 ===== */}
           <div className={`md:hidden ${mobileView === 'weekly' ? 'block' : 'hidden'}`}>
             <div className="overflow-x-auto pb-4">
-              <div className="min-w-[600px]">
-                <table className="w-full border-collapse border border-gray-200 text-sm">
+              <div className="min-w-[820px]">
+                <table className="w-full border-collapse border-2 border-slate-700 bg-white text-sm">
                   <thead>
                     <tr>
-                      <th className="border border-gray-200 p-2 w-14 bg-orange-50 text-orange-800 text-xs"></th>
+                      <th className="border border-slate-300 p-2 w-12 bg-orange-50 text-orange-900 text-sm"></th>
                       {DAYS.map((day, i) => {
                         const isToday = day === todayDayName;
                         const dateNum = weekDates[i]?.getDate();
                         const month = weekDates[i] ? weekDates[i].getMonth() + 1 : '';
                         return (
-                          <th key={day} className={`border p-1.5 text-center font-semibold text-xs ${isToday ? 'bg-orange-500 text-white border-orange-500' : 'bg-orange-50 text-orange-800 border-gray-200'}`}>
+                          <th key={day} className={`border p-2 text-center font-bold text-sm ${isToday ? 'bg-orange-500 text-white border-orange-500' : 'bg-orange-50 text-orange-900 border-slate-300'}`}>
                             <div>{day}</div>
-                            <div className={`text-[11px] font-semibold ${isToday ? 'text-orange-100' : 'text-orange-400'}`}>{month}/{dateNum}</div>
+                            <div className={`text-xs font-semibold ${isToday ? 'text-orange-100' : 'text-orange-500'}`}>{month}/{dateNum}</div>
                           </th>
                         );
                       })}
                     </tr>
                   </thead>
                   <tbody>
-                    {TIMES.map(time => (
+                    {TIMES.map(time => {
+                      const mealGridStyle = getMealGridStyle(menus, foodDb, time);
+                      return (
                       <tr key={time}>
-                        <td className="border border-gray-200 p-1.5 text-center font-semibold bg-gray-50 text-gray-700 text-xs">{time}</td>
+                        <td className="border border-slate-300 p-2 text-center font-bold bg-slate-50 text-slate-800 text-sm">{time}</td>
                         {DAYS.map(day => {
-                          const menuEntry = menus.find(m => m.day === day && m.time === time);
-                          const foods = menuEntry ? menuEntry.foodIds.map(id => foodDb.find(f => f.id === id)!).filter(Boolean) : [];
+                          const foods = getFoodsForMeal(menus, foodDb, day, time);
                           return (
-                            <td key={`${day}-${time}`} className="border border-gray-200 p-1 text-center align-top h-[120px]">
-                              <div className="min-h-[120px] flex flex-col gap-1 items-center justify-start">
+                            <td key={`${day}-${time}`} className="border border-slate-300 p-1.5 text-center align-top h-[145px]">
+                              <div className="grid min-h-[145px] items-stretch" style={mealGridStyle}>
                                 {foods.length > 0 ? foods.map(food => (
-                                  <div key={food.id} className="flex flex-col">
-                                    <span className="text-[10px] font-bold text-gray-800 break-all leading-tight">{food.name}</span>
-                                    {food.origin && <span className="text-[8px] text-gray-500">({food.origin})</span>}
+                                  <div key={food.id} className="grid h-full min-h-0 grid-rows-[auto_11px] content-start justify-items-center px-0.5 pt-0.5">
+                                    <span className="inline-block max-w-none text-center text-xs font-bold leading-snug text-slate-900" style={{ wordBreak: 'keep-all', overflowWrap: 'normal' }}>{renderMenuName(food.name)}</span>
+                                    <span className={`h-[11px] whitespace-nowrap text-[9px] leading-none text-slate-500 ${food.origin ? '' : 'invisible'}`}>
+                                      {food.origin ? `(${food.origin})` : '-'}
+                                    </span>
                                   </div>
-                                )) : <span className="text-gray-300 mt-8">-</span>}
+                                )) : <span className="row-span-full flex items-center justify-center text-gray-300">-</span>}
                               </div>
                             </td>
                           );
                         })}
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -432,40 +513,43 @@ export default function MealUserView() {
 
           {/* ===== 데스크탑 주간 테이블 ===== */}
           <div className="hidden md:block overflow-x-auto pb-4">
-            <div className="min-w-full">
-              <table className="w-full border-collapse border border-gray-200 text-sm">
+            <div className="min-w-[1120px]">
+              <table className="w-full border-collapse border-2 border-slate-800 bg-white/95 text-base shadow-sm">
                 <thead>
                   <tr>
-                    <th className="border border-gray-200 p-2 w-16 bg-orange-50 text-orange-800"></th>
+                    <th className="border border-slate-300 p-2 w-14 bg-orange-50 text-orange-900"></th>
                     {DAYS.map((day, i) => {
                       const isToday = day === todayDayName;
                       const dateNum = weekDates[i]?.getDate();
                       const month = weekDates[i] ? weekDates[i].getMonth() + 1 : '';
                       return (
-                        <th key={day} className={`border p-2 text-center font-semibold w-[12%] ${isToday ? 'bg-orange-500 text-white border-orange-500 border-2' : 'bg-orange-50 text-orange-800 border-gray-200'}`}>
+                        <th key={day} className={`border p-3 text-center font-extrabold w-[12%] ${isToday ? 'bg-orange-500 text-white border-orange-500 border-2' : 'bg-orange-50 text-orange-900 border-slate-300'}`}>
                           <div>{day}</div>
-                          <div className={`text-xs font-semibold ${isToday ? 'text-orange-100' : 'text-orange-400'}`}>{month}/{dateNum}</div>
+                          <div className={`text-sm font-semibold mt-1 ${isToday ? 'text-orange-100' : 'text-orange-500'}`}>{month}/{dateNum}</div>
                         </th>
                       );
                     })}
                   </tr>
                 </thead>
                 <tbody>
-                  {TIMES.map(time => (
+                  {TIMES.map(time => {
+                    const mealGridStyle = getMealGridStyle(menus, foodDb, time);
+                    return (
                     <tr key={time}>
-                      <td className="border border-gray-200 p-2 text-center font-semibold bg-gray-50 text-gray-700">{time}</td>
+                      <td className="border border-slate-300 p-2 text-center font-extrabold bg-slate-50 text-slate-800">{time}</td>
                       {DAYS.map(day => {
-                        const menuEntry = menus.find(m => m.day === day && m.time === time);
-                        const foods = menuEntry ? menuEntry.foodIds.map(id => foodDb.find(f => f.id === id)!).filter(Boolean) : [];
+                        const foods = getFoodsForMeal(menus, foodDb, day, time);
                         return (
-                          <td key={`${day}-${time}`} className="border border-gray-200 p-0 text-center align-top h-[160px] w-[13%]">
-                            <div className="min-h-[160px] h-full p-2 flex flex-col gap-2 items-center justify-start">
+                          <td key={`${day}-${time}`} className="border border-slate-300 p-0 text-center align-top h-[190px] w-[13%]">
+                            <div className="min-h-[190px] h-full px-1.5 py-3">
                               {foods.length > 0 ? (
-                                <div className="flex flex-col gap-2 w-full h-full justify-start mt-1">
+                                <div className="grid h-full w-full items-stretch" style={mealGridStyle}>
                                   {foods.map(food => (
-                                    <div key={food.id} className="flex flex-col gap-0.5">
-                                      <span className="text-[11px] font-bold text-gray-800 break-all leading-tight">{food.name}</span>
-                                      {food.origin && <span className="text-[9px] text-gray-500 leading-tight">({food.origin})</span>}
+                                    <div key={food.id} className="grid h-full min-h-0 w-full grid-rows-[auto_12px] content-start justify-items-center px-0 pt-0.5 text-center">
+                                      <span className="inline-block max-w-none text-center text-[13px] font-extrabold leading-snug text-slate-900" style={{ wordBreak: 'keep-all', overflowWrap: 'normal' }}>{renderMenuName(food.name)}</span>
+                                      <span className={`h-[12px] whitespace-nowrap text-[10px] leading-none text-slate-500 ${food.origin ? '' : 'invisible'}`}>
+                                        {food.origin ? `(${food.origin})` : '-'}
+                                      </span>
                                     </div>
                                   ))}
                                 </div>
@@ -479,7 +563,8 @@ export default function MealUserView() {
                         );
                       })}
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -539,7 +624,7 @@ export default function MealUserView() {
       <div className="absolute left-[-9999px] top-0 pointer-events-none">
         <div 
           ref={pdfRef}
-          className="bg-white shadow-lg relative p-6"
+          className="bg-white shadow-lg relative p-3"
           style={{ 
             width: '210mm', 
             minHeight: '297mm',
@@ -549,24 +634,24 @@ export default function MealUserView() {
             backgroundPosition: 'center'
           }}
         >
-          <div className="w-full h-full min-h-[270mm] bg-white/85 backdrop-blur-md rounded-2xl p-8 shadow-sm border border-white/50 flex flex-col">
-            <div className="flex flex-col items-center mb-6">
+          <div className="w-full h-full min-h-[281mm] bg-white/95 backdrop-blur-md rounded-[24px] px-3 py-5 shadow-md border border-white/70 flex flex-col">
+            <div className="flex flex-col items-center mb-5">
               <img src="/images/yslogo.png" alt="연세척병원 로고" className="h-12 mb-3 object-contain" />
-              <h2 className="text-3xl font-black drop-shadow-md mb-2" style={{ color: settings.titleColor || '#f97316' }}>주간 식단표</h2>
-              <h3 className="text-xl font-bold text-gray-800 border-b border-gray-400 pb-1 px-4 inline-block">{settings.weekTitle || '이번 주 식단'}</h3>
+              <h2 className="text-4xl font-black drop-shadow-md mb-2" style={{ color: settings.titleColor || '#f97316' }}>주간 식단표</h2>
+              <h3 className="text-xl font-extrabold text-slate-800 border-b-2 border-slate-400 pb-1 px-6 inline-block">{settings.weekTitle || '이번 주 식단'}</h3>
             </div>
 
-            <table className="w-full border-collapse border-2 border-gray-800 bg-white bg-opacity-90" style={{ tableLayout: 'fixed' }}>
+            <table className="w-full border-collapse border-2 border-slate-800 bg-white/95 text-[13px]" style={{ tableLayout: 'fixed' }}>
               <thead>
                 <tr>
-                  <th className="border border-gray-400 p-2 w-12 text-center bg-gray-100"></th>
+                  <th className="border border-slate-400 p-1 w-8 text-center bg-slate-100"></th>
                   {DAYS.map((day, i) => {
                     const date = weekDates[i];
                     return (
-                      <th key={day} className="border border-gray-400 p-2 text-center bg-gray-50 font-bold">
+                      <th key={day} className="border border-slate-400 p-2.5 text-center bg-slate-50 font-extrabold text-slate-900">
                         <div>{day}요일</div>
                         {date && (
-                          <div className="mt-1 text-sm font-semibold text-gray-600">
+                          <div className="mt-1 text-sm font-bold text-slate-600">
                             {date.getMonth() + 1}/{date.getDate()}
                           </div>
                         )}
@@ -576,22 +661,25 @@ export default function MealUserView() {
                 </tr>
               </thead>
               <tbody>
-                {TIMES.map(time => (
+                {TIMES.map(time => {
+                  const mealGridStyle = getMealGridStyle(menus, foodDb, time);
+                  return (
                   <tr key={time}>
-                    <td className="border border-gray-400 p-2 text-center font-bold bg-gray-50 align-middle">
+                    <td className="border border-slate-400 p-1 text-center font-extrabold bg-slate-50 text-slate-800 align-middle">
                       {time}
                     </td>
                     {DAYS.map(day => {
-                      const menuEntry = menus.find(m => m.day === day && m.time === time);
-                      const foods = menuEntry ? menuEntry.foodIds.map(id => foodDb.find(f => f.id === id)!).filter(Boolean) : [];
+                      const foods = getFoodsForMeal(menus, foodDb, day, time);
 
                       return (
-                        <td key={`${day}-${time}`} className="border border-gray-400 p-0 align-top relative h-[160px]">
-                          <div className="min-h-[160px] h-full p-2 flex flex-col gap-2 items-center justify-start">
+                        <td key={`${day}-${time}`} className="border border-slate-400 p-0 align-top relative h-[190px]">
+                          <div className="grid min-h-[190px] h-full items-stretch px-0.5 py-2" style={mealGridStyle}>
                             {foods.map(food => (
-                              <div key={food.id} className="text-[11px] text-center relative w-full flex flex-col gap-0.5">
-                                <div className="font-bold text-gray-800 leading-tight break-all" style={{ overflowWrap: 'anywhere' }}>{food.name}</div>
-                                {food.origin && <div className="text-[9px] text-gray-500 leading-tight">({food.origin})</div>}
+                              <div key={food.id} className="relative grid h-full min-h-0 w-full grid-rows-[auto_11px] content-start justify-items-center px-0 pt-0.5 text-center text-[12px]">
+                                <div className="inline-block max-w-none text-center font-extrabold leading-snug text-slate-900" style={{ wordBreak: 'keep-all', overflowWrap: 'normal' }}>{renderMenuName(food.name)}</div>
+                                <div className={`h-[11px] whitespace-nowrap text-[9px] leading-none text-slate-500 ${food.origin ? '' : 'invisible'}`}>
+                                  {food.origin ? `(${food.origin})` : '-'}
+                                </div>
                               </div>
                             ))}
                           </div>
@@ -599,12 +687,13 @@ export default function MealUserView() {
                       );
                     })}
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
 
-            <div className="mt-6 bg-white bg-opacity-90 p-4 rounded border border-gray-200 flex-1">
-              <div className="w-full h-full min-h-[200px] text-xs p-2 whitespace-pre-wrap text-gray-800">
+            <div className="mt-5 bg-white/95 p-4 rounded-xl border border-slate-200 flex-1">
+              <div className="w-full h-full min-h-[185px] text-[12px] leading-relaxed p-2 whitespace-pre-wrap text-slate-800">
                 {settings.originText}
               </div>
             </div>
