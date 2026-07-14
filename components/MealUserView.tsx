@@ -7,8 +7,6 @@ import { dummyFoodItems, dummyWeeklyMenus, dummySettings, dummyTodayLunch } from
 import { DayOfWeek, FoodItem, HistoryEntry, MealEntry, MealTime, Settings as MealSettings, TodayLunch } from '@/lib/types';
 import { formatDate, getWeekDatesFromTitle, getWeekDatesFromWeekStart, getWeekStartFromTitle, DAYS } from '@/lib/dateUtils';
 import { BellRing, ChevronLeft, ChevronRight, Camera, Download, Settings, CalendarDays, List, ChevronDown } from 'lucide-react';
-import { toPng } from 'html-to-image';
-import jsPDF from 'jspdf';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 
@@ -90,7 +88,8 @@ type MealHistoryRow = {
   week_title: string | null;
   menus: MealEntry[];
   settings: MealSettings;
-  today_lunch: TodayLunch | null;
+  // 사용자 화면은 과거 주차의 점심 사진을 표시하지 않으므로 초기 로딩에서 제외한다.
+  today_lunch?: TodayLunch | null;
 };
 
 const parseWeekTitle = (title: string | null | undefined) => {
@@ -152,28 +151,22 @@ export default function MealUserView() {
   
   useEffect(() => {
     const fetchData = async () => {
-      // 1. Food DB 로드
-      const { data: foodData } = await supabase
-        .from('food_items')
-        .select('*')
-        .order('name', { ascending: true });
+      // 세 쿼리를 병렬로 실행해 초기 로딩 시간 단축
+      const [{ data: foodData }, { data: stateData }, { data: historyData }] = await Promise.all([
+        supabase.from('food_items').select('*').order('name', { ascending: true }),
+        supabase.from('current_meal_state').select('*').eq('id', 1).single(),
+        // today_lunch(주차별 점심 사진, base64로 수 MB)는 사용자 화면에서 쓰지 않으므로 제외
+        supabase.from('meal_history').select('id, week_title, menus, settings'),
+      ]);
+
       if (foodData) setFoodDb(foodData);
 
-      // 2. 현재 상태 로드
-      const { data: stateData } = await supabase
-        .from('current_meal_state')
-        .select('*')
-        .eq('id', 1)
-        .single();
-      
       if (stateData) {
         setMenus(stateData.menus);
         setSettings(stateData.settings);
         setTodayLunch(stateData.today_lunch);
       }
 
-      // 3. 히스토리 로드
-      const { data: historyData } = await supabase.from('meal_history').select('*');
       if (historyData) {
         const sorted = (historyData as MealHistoryRow[]).slice().sort(sortMealHistoryAsc);
         
@@ -232,6 +225,10 @@ export default function MealUserView() {
   const handlePdfDownload = async () => {
     if (!pdfRef.current) return;
     try {
+      const [{ toPng }, { default: jsPDF }] = await Promise.all([
+        import('html-to-image'),
+        import('jspdf'),
+      ]);
       const element = pdfRef.current;
 
       await new Promise(r => setTimeout(r, 100));
@@ -584,7 +581,7 @@ export default function MealUserView() {
               </div>
               <div className="relative w-full bg-black" style={{ aspectRatio: '1000/1350' }}>
                 <img
-                  src={isLunchForToday ? todayLunch.imageUrl : '/images/main food.png'}
+                  src={isLunchForToday ? todayLunch.imageUrl : '/images/main-food.webp'}
                   alt="오늘의 점심"
                   className="w-full h-full object-contain"
                 />

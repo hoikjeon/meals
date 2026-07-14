@@ -40,7 +40,7 @@ export default function SplashScreen() {
     >
       <div style={{ position: "relative", width: "100vw", height: "100vh" }}>
         <Image
-          src="/images/loding-pic.png"
+          src="/images/loding-pic.webp"
           alt="로딩 중"
           fill
           priority

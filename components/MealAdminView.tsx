@@ -23,10 +23,9 @@ import { FoodItem, MealEntry, DayOfWeek, MealTime, Category, HistoryEntry, Setti
 import { DroppableCell } from './DroppableCell';
 import { DraggableFoodItem } from './DraggableFoodItem';
 import { ImagePlus, Download, Save, ArrowLeft, Trash2, Plus, ChevronLeft, ChevronRight, Camera, Eye, EyeOff, List, History, Edit2 } from 'lucide-react';
-import { toPng } from 'html-to-image';
-import jsPDF from 'jspdf';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
+import { uploadImageToStorage } from '@/lib/imageStorage';
 import ImageCropModal from './ImageCropModal';
 
 
@@ -862,8 +861,10 @@ export default function MealAdminView() {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onload = (event) => {
-        const url = event.target?.result as string;
+      reader.onload = async (event) => {
+        const dataUrl = event.target?.result as string;
+        // Storage 업로드 성공 시 URL 저장, 실패 시 base64 폴백 (DB 행 크기 급증 방지)
+        const url = (await uploadImageToStorage(dataUrl, 'background')) ?? dataUrl;
         const newSettings = { ...settings, backgroundImageUrl: url };
         setSettings(newSettings);
         setIsBgModalOpen(false);
@@ -901,7 +902,9 @@ export default function MealAdminView() {
 
   const handleCropConfirm = async (croppedUrl: string) => {
     setCropImageSrc(null);
-    const updated = { ...todayLunch, imageUrl: croppedUrl, date: new Date().toISOString().split('T')[0] };
+    // Storage 업로드 성공 시 URL 저장, 실패 시 base64 폴백 (DB 행 크기 급증 방지)
+    const storedUrl = (await uploadImageToStorage(croppedUrl, 'lunch')) ?? croppedUrl;
+    const updated = { ...todayLunch, imageUrl: storedUrl, date: new Date().toISOString().split('T')[0] };
     setTodayLunch(updated);
 
     try {
@@ -930,6 +933,10 @@ export default function MealAdminView() {
 
     let container: HTMLDivElement | null = null;
     try {
+      const [{ toPng }, { default: jsPDF }] = await Promise.all([
+        import('html-to-image'),
+        import('jspdf'),
+      ]);
       const element = canvasRef.current;
       const CAPTURE_W = 794; // 210mm @ 96dpi
 
@@ -2204,7 +2211,7 @@ export default function MealAdminView() {
             <div className="p-6">
               <div className="relative rounded-lg overflow-hidden mb-4 border border-gray-200 bg-black">
                 <img 
-                  src={isLunchForToday ? todayLunch.imageUrl : '/images/main food.png'} 
+                  src={isLunchForToday ? todayLunch.imageUrl : '/images/main-food.webp'}
                   alt="오늘의 점심" 
                   className={`w-full object-contain ${!isLunchForToday ? 'opacity-60' : ''}`} 
                   style={{ aspectRatio: '1000/1350' }} 

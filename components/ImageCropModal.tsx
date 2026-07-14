@@ -18,9 +18,15 @@ async function getCroppedImg(imageSrc: string, pixelCrop: Area): Promise<string>
     img.src = imageSrc;
   });
 
+  // 화면 표시 폭(최대 ~1150px) 기준으로 충분한 해상도. 원본 크기 그대로 저장하면 수 MB가 된다.
+  const MAX_WIDTH = 1200;
+  const scale = Math.min(1, MAX_WIDTH / pixelCrop.width);
+  const outW = Math.round(pixelCrop.width * scale);
+  const outH = Math.round(pixelCrop.height * scale);
+
   const canvas = document.createElement('canvas');
-  canvas.width = pixelCrop.width;
-  canvas.height = pixelCrop.height;
+  canvas.width = outW;
+  canvas.height = outH;
   const ctx = canvas.getContext('2d')!;
 
   ctx.drawImage(
@@ -31,11 +37,11 @@ async function getCroppedImg(imageSrc: string, pixelCrop: Area): Promise<string>
     pixelCrop.height,
     0,
     0,
-    pixelCrop.width,
-    pixelCrop.height,
+    outW,
+    outH,
   );
 
-  return canvas.toDataURL('image/jpeg', 0.92);
+  return canvas.toDataURL('image/jpeg', 0.85);
 }
 
 export default function ImageCropModal({ imageSrc, onConfirm, onClose }: ImageCropModalProps) {
