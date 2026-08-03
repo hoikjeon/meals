@@ -9,6 +9,7 @@ import { formatDate, getWeekDatesFromTitle, getWeekDatesFromWeekStart, getWeekSt
 import { BellRing, ChevronLeft, ChevronRight, Camera, Download, Settings, CalendarDays, List, ChevronDown } from 'lucide-react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
+import { fetchLunchPhotos, LunchPhotoMap } from '@/lib/lunchPhotos';
 
 
 const TIMES: MealTime[] = ['아침', '점심', '저녁'];
@@ -148,6 +149,7 @@ export default function MealUserView() {
   const [mobileView, setMobileView] = useState<'daily' | 'weekly'>('daily');
   const [selectedDayIndex, setSelectedDayIndex] = useState<number | null>(null);
   const [showOrigin, setShowOrigin] = useState(false);
+  const [lunchPhotos, setLunchPhotos] = useState<LunchPhotoMap>({});
   
   useEffect(() => {
     const fetchData = async () => {
@@ -275,16 +277,27 @@ export default function MealUserView() {
   });
   const todayDayName = todayDayIndex >= 0 ? DAYS[todayDayIndex] : null;
   const activeSelectedDayIndex = selectedDayIndex ?? (todayDayIndex >= 0 ? todayDayIndex : 0);
-  
-  const getTodayDateString = () => {
-    const d = new Date();
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
 
-  const isLunchForToday = !!(todayLunch && todayLunch.imageUrl && todayLunch.date === getTodayDateString());
+  // 표시 중인 주의 점심 사진을 한 번에 조회 (주차를 옮기면 다시 조회)
+  const weekKey = weekDates[0] ? formatDate(weekDates[0]) : '';
+  useEffect(() => {
+    if (!weekKey) return;
+    let cancelled = false;
+    const dates = getWeekDatesFromWeekStart(weekKey).map(formatDate);
+    fetchLunchPhotos(dates).then(map => {
+      if (!cancelled) setLunchPhotos(map);
+    });
+    return () => { cancelled = true; };
+  }, [weekKey]);
+
+
+  // 선택된 요일의 날짜 = 점심 사진을 조회할 날짜
+  const selectedDate = weekDates[activeSelectedDayIndex] ? formatDate(weekDates[activeSelectedDayIndex]) : '';
+  const isSelectedToday = selectedDate === formatDate(today);
+  // lunch_photos 우선, 없으면 기존 current_meal_state.today_lunch 로 폴백 (테이블 도입 전 호환)
+  const selectedLunchUrl = lunchPhotos[selectedDate]
+    || (todayLunch?.imageUrl && todayLunch.date === selectedDate ? todayLunch.imageUrl : '');
+  const selectedDateObj = weekDates[activeSelectedDayIndex];
 
   // 모바일: 선택된 날의 라벨 (오늘/내일/모레/요일)
   const getDayLabel = (idx: number) => {
@@ -465,10 +478,16 @@ export default function MealUserView() {
                       <th className="border border-slate-300 p-2 w-12 bg-orange-50 text-orange-900 text-sm"></th>
                       {DAYS.map((day, i) => {
                         const isToday = day === todayDayName;
+                        const isSelected = i === activeSelectedDayIndex;
                         const dateNum = weekDates[i]?.getDate();
                         const month = weekDates[i] ? weekDates[i].getMonth() + 1 : '';
                         return (
-                          <th key={day} className={`border p-2 text-center font-bold text-sm ${isToday ? 'bg-orange-500 text-white border-orange-500' : 'bg-orange-50 text-orange-900 border-slate-300'}`}>
+                          <th
+                            key={day}
+                            onClick={() => setSelectedDayIndex(i)}
+                            title={`${month}/${dateNum} 점심 사진 보기`}
+                            className={`border p-2 text-center font-bold text-sm cursor-pointer ${isToday ? 'bg-orange-500 text-white border-orange-500' : 'bg-orange-50 text-orange-900 border-slate-300'} ${isSelected ? 'ring-2 ring-inset ring-orange-400' : ''}`}
+                          >
                             <div>{day}</div>
                             <div className={`text-xs font-semibold ${isToday ? 'text-orange-100' : 'text-orange-500'}`}>{month}/{dateNum}</div>
                           </th>
@@ -517,10 +536,16 @@ export default function MealUserView() {
                     <th className="border border-slate-300 p-2 w-14 bg-orange-50 text-orange-900"></th>
                     {DAYS.map((day, i) => {
                       const isToday = day === todayDayName;
+                      const isSelected = i === activeSelectedDayIndex;
                       const dateNum = weekDates[i]?.getDate();
                       const month = weekDates[i] ? weekDates[i].getMonth() + 1 : '';
                       return (
-                        <th key={day} className={`border p-3 text-center font-extrabold w-[12%] ${isToday ? 'bg-orange-500 text-white border-orange-500 border-2' : 'bg-orange-50 text-orange-900 border-slate-300'}`}>
+                        <th
+                          key={day}
+                          onClick={() => setSelectedDayIndex(i)}
+                          title={`${month}/${dateNum} 점심 사진 보기`}
+                          className={`border p-3 text-center font-extrabold w-[12%] cursor-pointer ${isToday ? 'bg-orange-500 text-white border-orange-500 border-2' : 'bg-orange-50 text-orange-900 border-slate-300'} ${isSelected ? 'ring-2 ring-inset ring-orange-400' : ''}`}
+                        >
                           <div>{day}</div>
                           <div className={`text-sm font-semibold mt-1 ${isToday ? 'text-orange-100' : 'text-orange-500'}`}>{month}/{dateNum}</div>
                         </th>
@@ -568,27 +593,29 @@ export default function MealUserView() {
           </div>
 
           <div className="flex flex-col">
-            {/* 오늘의 점심 Section - 모바일에서 먼저 표시 */}
+            {/* 점심 사진 Section - 선택한 요일의 날짜에 맞춰 표시 */}
             <section className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mt-2 order-1 md:order-2">
               <div className="bg-orange-500 p-3 text-white font-bold flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Camera size={20} />
-                  오늘의 점심
+                  {isSelectedToday ? '오늘의 점심' : '점심 사진'}
                 </div>
-                <span className="text-orange-100 text-sm font-normal">
-                  {new Date().getFullYear()}년 {new Date().getMonth() + 1}월 {new Date().getDate()}일 ({['일','월','화','수','목','금','토'][new Date().getDay()]}요일)
-                </span>
+                {selectedDateObj && (
+                  <span className="text-orange-100 text-sm font-normal">
+                    {selectedDateObj.getFullYear()}년 {selectedDateObj.getMonth() + 1}월 {selectedDateObj.getDate()}일 ({DAYS[activeSelectedDayIndex]}요일)
+                  </span>
+                )}
               </div>
               <div className="relative w-full bg-black" style={{ aspectRatio: '1000/1350' }}>
                 <img
-                  src={isLunchForToday ? todayLunch.imageUrl : '/images/main-food.webp'}
-                  alt="오늘의 점심"
+                  src={selectedLunchUrl || '/images/main-food.webp'}
+                  alt={isSelectedToday ? '오늘의 점심' : '점심 사진'}
                   className="w-full h-full object-contain"
                 />
                 <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-4">
                   <p className="text-white font-medium">
-                    {isLunchForToday ? (
-                      `${new Date().getMonth() + 1}월 ${new Date().getDate()}일 맛있는 점심 드세요! 🍚`
+                    {selectedLunchUrl && selectedDateObj ? (
+                      `${selectedDateObj.getMonth() + 1}월 ${selectedDateObj.getDate()}일 맛있는 점심 드세요! 🍚`
                     ) : (
                       '맛있는 점심 드세요! 🍚'
                     )}

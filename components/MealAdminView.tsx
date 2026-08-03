@@ -26,6 +26,7 @@ import { ImagePlus, Download, Save, ArrowLeft, Trash2, Plus, ChevronLeft, Chevro
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { uploadImageToStorage } from '@/lib/imageStorage';
+import { fetchLunchPhotos, saveLunchPhoto, deleteLunchPhoto, LunchPhotoMap } from '@/lib/lunchPhotos';
 import ImageCropModal from './ImageCropModal';
 
 
@@ -326,8 +327,11 @@ export default function MealAdminView() {
     return `${year}-${month}-${day}`;
   };
 
-  const isLunchForToday = !!(todayLunch && todayLunch.imageUrl && todayLunch.date === getTodayDateString());
   const [isLunchModalOpen, setIsLunchModalOpen] = useState(false);
+  // 점심 사진: 날짜별 보관 (lunch_photos 테이블)
+  const [lunchPhotos, setLunchPhotos] = useState<LunchPhotoMap>({});
+  const [lunchUploadDate, setLunchUploadDate] = useState(getTodayDateString());
+  const [lunchPhotosVersion, setLunchPhotosVersion] = useState(0);
   const [isMobileFoodPanelOpen, setIsMobileFoodPanelOpen] = useState(false);
   const [isKimchiModalOpen, setIsKimchiModalOpen] = useState(false);
   const [isHistoryManageModalOpen, setIsHistoryManageModalOpen] = useState(false);
@@ -437,6 +441,20 @@ export default function MealAdminView() {
 
     fetchData();
   }, []);
+
+  // 편집 중인 주 + 업로드 대상 날짜의 점심 사진 로드 (저장/삭제 후 version 증가로 재조회)
+  const weekStartForPhotos = settings.weekStart || '';
+  useEffect(() => {
+    let cancelled = false;
+    const dates = new Set<string>([lunchUploadDate]);
+    if (weekStartForPhotos) {
+      for (const d of getWeekDatesFromWeekStart(weekStartForPhotos)) dates.add(formatDate(d));
+    }
+    fetchLunchPhotos([...dates]).then(map => {
+      if (!cancelled) setLunchPhotos(map);
+    });
+    return () => { cancelled = true; };
+  }, [weekStartForPhotos, lunchUploadDate, lunchPhotosVersion]);
 
   // 3분마다 자동 저장 (180,000ms)
   useEffect(() => {
@@ -902,30 +920,53 @@ export default function MealAdminView() {
 
   const handleCropConfirm = async (croppedUrl: string) => {
     setCropImageSrc(null);
+    const targetDate = lunchUploadDate;
     // Storage 업로드 성공 시 URL 저장, 실패 시 base64 폴백 (DB 행 크기 급증 방지)
     const storedUrl = (await uploadImageToStorage(croppedUrl, 'lunch')) ?? croppedUrl;
-    const updated = { ...todayLunch, imageUrl: storedUrl, date: new Date().toISOString().split('T')[0] };
-    setTodayLunch(updated);
 
     try {
-      const { error: stateError } = await supabase.from('current_meal_state').upsert({
-        id: 1,
-        menus,
-        settings,
-        today_lunch: updated,
-        updated_at: new Date().toISOString()
-      });
-      if (stateError) throw stateError;
+      // 1. 날짜별 사진 저장 — 사용자 화면은 이 값을 읽는다
+      const { error: photoError } = await saveLunchPhoto(targetDate, storedUrl);
+      if (photoError) throw photoError;
+      setLunchPhotosVersion(v => v + 1);
 
-      const existing = history.find(h => h.weekTitle === settings.weekTitle);
-      if (existing) {
-        await supabase.from('meal_history').update({ today_lunch: updated }).eq('id', existing.id);
+      // 2. 오늘 날짜면 기존 today_lunch 필드도 갱신 (구버전 호환용)
+      if (targetDate === getTodayDateString()) {
+        const updated = { ...todayLunch, imageUrl: storedUrl, date: targetDate };
+        setTodayLunch(updated);
+
+        const { error: stateError } = await supabase.from('current_meal_state').upsert({
+          id: 1,
+          menus,
+          settings,
+          today_lunch: updated,
+          updated_at: new Date().toISOString()
+        });
+        if (stateError) throw stateError;
+
+        const existing = history.find(h => h.weekTitle === settings.weekTitle);
+        if (existing) {
+          await supabase.from('meal_history').update({ today_lunch: updated }).eq('id', existing.id);
+        }
       }
-      alert('오늘의 점심 사진이 저장되었습니다.');
+
+      alert(`${targetDate} 점심 사진이 저장되었습니다.`);
     } catch (err) {
       console.error('Error saving lunch image:', err);
-      alert('사진 저장 중 오류가 발생했습니다.');
+      alert('사진 저장 중 오류가 발생했습니다.\nlunch_photos 테이블이 생성되어 있는지 확인해 주세요.');
     }
+  };
+
+  const handleDeleteLunchPhoto = async (date: string) => {
+    if (!confirm(`${date} 점심 사진을 삭제하시겠습니까?`)) return;
+
+    const { error } = await deleteLunchPhoto(date);
+    if (error) {
+      alert('삭제 실패: ' + error.message);
+      return;
+    }
+    setLunchPhotosVersion(v => v + 1);
+    if (date === getTodayDateString()) setTodayLunch({ ...todayLunch, imageUrl: '' });
   };
 
   const handlePdfDownload = async () => {
@@ -1476,16 +1517,16 @@ export default function MealAdminView() {
 
         <div className="p-4 border-t border-gray-200 bg-gray-50">
           <h3 className="font-bold text-sm mb-2">오늘의 점심 업로드</h3>
-          <button 
-            onClick={() => setIsLunchModalOpen(true)}
+          <button
+            onClick={() => { setLunchUploadDate(getTodayDateString()); setIsLunchModalOpen(true); }}
             className="w-full border-2 border-dashed border-gray-300 rounded-lg p-4 flex flex-col items-center justify-center text-center hover:bg-gray-100 cursor-pointer transition-colors relative overflow-hidden group min-h-[120px]"
           >
-            {todayLunch.imageUrl ? (
+            {lunchPhotos[getTodayDateString()] ? (
               <>
-                <img src={todayLunch.imageUrl} alt="오늘의 점심 미리보기" className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:opacity-30 transition-opacity" />
+                <img src={lunchPhotos[getTodayDateString()]} alt="오늘의 점심 미리보기" className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:opacity-30 transition-opacity" />
                 <div className="relative z-10 flex flex-col items-center">
                   <ImagePlus className="text-gray-800 mb-2" />
-                  <p className="text-xs text-gray-800 font-bold bg-white/80 px-2 py-1 rounded">{todayLunch.date} 사진 변경하기</p>
+                  <p className="text-xs text-gray-800 font-bold bg-white/80 px-2 py-1 rounded">{getTodayDateString()} 사진 변경하기</p>
                 </div>
               </>
             ) : (
@@ -2202,26 +2243,72 @@ export default function MealAdminView() {
           <div className="bg-white rounded-xl shadow-xl w-[450px] max-w-[90vw] overflow-hidden flex flex-col">
             <div className="p-4 border-b flex justify-between items-center bg-orange-500">
               <div>
-                <h2 className="font-bold text-lg text-white">오늘의 점심 업로드</h2>
-                <p className="text-orange-100 text-sm">{new Date().getFullYear()}년 {new Date().getMonth() + 1}월 {new Date().getDate()}일 ({['일','월','화','수','목','금','토'][new Date().getDay()]}요일)</p>
+                <h2 className="font-bold text-lg text-white">점심 사진 업로드</h2>
+                <p className="text-orange-100 text-sm">날짜별로 한 장씩 보관됩니다</p>
               </div>
               <button onClick={() => setIsLunchModalOpen(false)} className="text-white hover:text-orange-200 text-xl">✕</button>
             </div>
-            
-            <div className="p-6">
+
+            <div className="p-6 overflow-y-auto">
+              {/* 업로드/조회 대상 날짜 */}
+              <div className="mb-4">
+                <label className="block text-xs font-bold text-gray-500 mb-1.5">사진 날짜</label>
+                <div className="flex gap-2">
+                  <input
+                    type="date"
+                    value={lunchUploadDate}
+                    onChange={(e) => setLunchUploadDate(e.target.value || getTodayDateString())}
+                    className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                  />
+                  <button
+                    onClick={() => setLunchUploadDate(getTodayDateString())}
+                    className="px-3 py-2 text-sm font-bold text-orange-600 border border-orange-300 rounded-lg hover:bg-orange-50 transition-colors"
+                  >
+                    오늘
+                  </button>
+                </div>
+              </div>
+
+              {/* 이 주에 등록된 날짜 바로가기 */}
+              {weekStartForPhotos && (
+                <div className="mb-4 flex flex-wrap gap-1.5">
+                  {getWeekDatesFromWeekStart(weekStartForPhotos).map((d, i) => {
+                    const key = formatDate(d);
+                    const has = Boolean(lunchPhotos[key]);
+                    const isPicked = key === lunchUploadDate;
+                    return (
+                      <button
+                        key={key}
+                        onClick={() => setLunchUploadDate(key)}
+                        title={key}
+                        className={`px-2 py-1 rounded-md text-xs font-semibold border transition-colors ${
+                          isPicked
+                            ? 'bg-orange-500 text-white border-orange-500'
+                            : has
+                              ? 'bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100'
+                              : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100'
+                        }`}
+                      >
+                        {DAYS[i]} {d.getMonth() + 1}/{d.getDate()}{has ? ' ●' : ''}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
               <div className="relative rounded-lg overflow-hidden mb-4 border border-gray-200 bg-black">
-                <img 
-                  src={isLunchForToday ? todayLunch.imageUrl : '/images/main-food.webp'}
-                  alt="오늘의 점심" 
-                  className={`w-full object-contain ${!isLunchForToday ? 'opacity-60' : ''}`} 
-                  style={{ aspectRatio: '1000/1350' }} 
+                <img
+                  src={lunchPhotos[lunchUploadDate] || '/images/main-food.webp'}
+                  alt="점심 사진"
+                  className={`w-full object-contain ${lunchPhotos[lunchUploadDate] ? '' : 'opacity-60'}`}
+                  style={{ aspectRatio: '1000/1350' }}
                 />
                 <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-3">
                   <p className="text-white text-sm font-medium">
-                    {isLunchForToday ? `${todayLunch.date} 점심` : '기본 노출 이미지'}
+                    {lunchPhotos[lunchUploadDate] ? `${lunchUploadDate} 점심` : '등록된 사진 없음 (기본 이미지)'}
                   </p>
                 </div>
-                {!isLunchForToday && (
+                {!lunchPhotos[lunchUploadDate] && (
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                     <span className="bg-black/70 text-white text-xs font-bold px-3 py-1.5 rounded-full backdrop-blur-sm">
                       ⚠️ 기본 이미지 노출 중
@@ -2232,20 +2319,18 @@ export default function MealAdminView() {
 
               <label className="w-full bg-orange-500 text-white py-3 rounded-lg flex items-center justify-center gap-2 cursor-pointer hover:bg-orange-600 transition-colors font-bold">
                 <ImagePlus size={20} />
-                {todayLunch.imageUrl ? '사진 변경하기' : '사진 업로드하기'}
+                {lunchPhotos[lunchUploadDate] ? '사진 변경하기' : '사진 업로드하기'}
                 <input type="file" className="hidden" accept="image/*" onChange={(e) => {
                   handleLunchImageUpload(e);
                 }} />
               </label>
 
-              {todayLunch.imageUrl && (
-                <button 
-                  onClick={() => {
-                    setTodayLunch({ ...todayLunch, imageUrl: '' });
-                  }}
+              {lunchPhotos[lunchUploadDate] && (
+                <button
+                  onClick={() => handleDeleteLunchPhoto(lunchUploadDate)}
                   className="w-full mt-2 py-2 text-red-500 hover:bg-red-50 rounded-lg text-sm font-medium transition-colors"
                 >
-                  사진 삭제
+                  이 날짜 사진 삭제
                 </button>
               )}
             </div>
