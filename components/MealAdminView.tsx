@@ -348,6 +348,7 @@ export default function MealAdminView() {
   const [reviewFoods, setReviewFoods] = useState<ReviewFood[]>([]);
   const [extractedMenuData, setExtractedMenuData] = useState<AiMenuEntry[]>([]);
   const [aiImagePreview, setAiImagePreview] = useState<string | null>(null);
+  const [isAiDragOver, setIsAiDragOver] = useState(false);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const handleSaveRef = useRef<((options?: boolean | React.MouseEvent) => Promise<void>) | null>(null);
@@ -2000,7 +2001,30 @@ export default function MealAdminView() {
               <div className="flex-1 overflow-y-auto space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-4">
-                    <label className="block border-2 border-dashed border-gray-300 rounded-xl p-8 text-center cursor-pointer hover:bg-gray-50 transition-colors">
+                    <label 
+                      className={`block border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${isAiDragOver ? 'border-purple-500 bg-purple-50' : 'border-gray-300 hover:bg-gray-50'}`}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setIsAiDragOver(true);
+                      }}
+                      onDragLeave={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setIsAiDragOver(false);
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setIsAiDragOver(false);
+                        const file = e.dataTransfer.files?.[0];
+                        if (file && file.type.startsWith('image/')) {
+                          const reader = new FileReader();
+                          reader.onload = (ev) => setAiImagePreview(ev.target?.result as string);
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    >
                       <input 
                         type="file" 
                         className="hidden" 
@@ -2014,8 +2038,8 @@ export default function MealAdminView() {
                           }
                         }}
                       />
-                      <Camera className="mx-auto text-gray-400 mb-2" size={32} />
-                      <span className="text-sm font-medium text-gray-600">식단표 이미지 업로드</span>
+                      <Camera className={`mx-auto mb-2 ${isAiDragOver ? 'text-purple-500' : 'text-gray-400'}`} size={32} />
+                      <span className={`text-sm font-medium ${isAiDragOver ? 'text-purple-600' : 'text-gray-600'}`}>식단표 이미지 업로드</span>
                     </label>
                     {aiImagePreview && (
                       <div className="relative aspect-video rounded-lg overflow-hidden border">
