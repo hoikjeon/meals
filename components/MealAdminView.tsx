@@ -2,8 +2,8 @@
 
 /* eslint-disable @next/next/no-img-element -- PDF capture and data URL previews need plain img elements. */
 
-import React, { useState, useRef, useEffect, useSyncExternalStore } from 'react';
-import { DndContext, DragEndEvent, DragOverlay, useSensor, useSensors, PointerSensor, DragStartEvent, closestCenter } from '@dnd-kit/core';
+import React, { useState, useRef, useEffect, useMemo, useSyncExternalStore } from 'react';
+import { DndContext, DragEndEvent, DragOverlay, useSensor, useSensors, PointerSensor, DragStartEvent, closestCenter, pointerWithin, CollisionDetection } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
@@ -255,6 +255,38 @@ const PRESET_BACKGROUNDS = [
 
 const buildWeekTitle = (month: number, week: number) => `${month}월 ${week}주차 식단표`;
 
+/**
+ * 격자 항목 id 파싱: `grid-[mobile-]{요일}-{끼니}-{음식UUID}-{표시순번}`
+ * 음식 id가 UUID라 하이픈이 들어 있으므로 앞뒤를 잘라내고 가운데를 다시 이어붙인다.
+ */
+const parseGridItemId = (id: string) => {
+  const isMobile = id.startsWith('grid-mobile-');
+  if (!isMobile && !id.startsWith('grid-')) return null;
+
+  const parts = id.slice((isMobile ? 'grid-mobile-' : 'grid-').length).split('-');
+  if (parts.length < 4) return null;
+
+  return {
+    day: parts[0] as DayOfWeek,
+    time: parts[1] as MealTime,
+    foodId: parts.slice(2, -1).join('-'),
+    idx: parseInt(parts[parts.length - 1])
+  };
+};
+
+/**
+ * 칸(셀)보다 칸 안의 개별 항목을 우선 선택한다.
+ * 기본값 rectIntersection은 겹침 비율로 대상을 고르기 때문에,
+ * 슬롯마다 높이가 다른 이 식단표에서는 어느 항목에 놓이는지 예측하기 어렵다.
+ */
+const gridCollisionDetection: CollisionDetection = (args) => {
+  const pointerHits = pointerWithin(args);
+  const itemHits = pointerHits.filter(c => String(c.id).startsWith('grid-'));
+  if (itemHits.length > 0) return itemHits;
+  if (pointerHits.length > 0) return pointerHits;
+  return closestCenter(args);
+};
+
 function getCurrentWeekOfMonth(): { month: number; week: number } {
   const today = new Date();
   
@@ -501,6 +533,24 @@ export default function MealAdminView() {
     }
   };
 
+  // 음식 목록 필터링: food_items 1,000여 개를 매 렌더마다 훑지 않도록 메모이제이션한다.
+  // 훅 규칙상 아래 로그인 화면 early return보다 위에 있어야 한다.
+  const favoriteFoodIds = settings.favoriteFoodIds;
+  const filteredFoods = useMemo(() => foodDb.filter(f => {
+    // 검색어가 있으면 카테고리 무시하고 전체 검색
+    if (searchQuery) {
+      if (!f.name.includes(searchQuery)) return false;
+    } else {
+      if (f.category !== activeTab) return false;
+    }
+    if (showFavoritesOnly && !(favoriteFoodIds || []).includes(f.id)) return false;
+    if (selectedChosung !== '전체') {
+      const chosung = getChosungGroup(f.name.charAt(0));
+      if (chosung !== selectedChosung) return false;
+    }
+    return true;
+  }), [foodDb, searchQuery, activeTab, showFavoritesOnly, favoriteFoodIds, selectedChosung]);
+
   if (!isAuthenticated) {
     return (
       <div className="fixed inset-0 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center z-50">
@@ -727,7 +777,8 @@ export default function MealAdminView() {
     });
   };
 
-  const addFoodToCell = (foodId: string, day: DayOfWeek, time: MealTime) => {
+  /** insertAt을 주면 그 자리에 끼워 넣고, 없으면 기존처럼 맨 뒤(배추김치 앞)에 붙인다. */
+  const addFoodToCell = (foodId: string, day: DayOfWeek, time: MealTime, insertAt?: number) => {
     setMenus((prev) => {
       const existingEntryIndex = prev.findIndex(m => m.day === day && m.time === time);
       if (existingEntryIndex >= 0) {
@@ -735,17 +786,20 @@ export default function MealAdminView() {
         const currentFoods = [...newMenus[existingEntryIndex].foodIds];
         if (!currentFoods.includes(foodId)) {
           const food = foodDb.find(f => f.id === foodId);
+          const kimchiIdx = currentFoods.findIndex(id => foodDb.find(f => f.id === id)?.name === '배추김치');
+
           if (food?.name === '배추김치') {
-            currentFoods.push(foodId); // 배추김치는 맨 뒤에 추가
+            currentFoods.push(foodId); // 배추김치는 항상 맨 뒤
+          } else if (typeof insertAt === 'number' && insertAt >= 0) {
+            // 놓은 자리에 삽입하되, 배추김치보다 뒤로는 가지 않게 한다
+            const limit = kimchiIdx >= 0 ? kimchiIdx : currentFoods.length;
+            currentFoods.splice(Math.min(insertAt, limit), 0, foodId);
+          } else if (kimchiIdx >= 0) {
+            currentFoods.splice(kimchiIdx, 0, foodId);
           } else {
-            // 다른 음식은 배추김치 앞, 혹은 맨 뒤에 추가
-            const kimchiIdx = currentFoods.findIndex(id => foodDb.find(f => f.id === id)?.name === '배추김치');
-            if (kimchiIdx >= 0) {
-              currentFoods.splice(kimchiIdx, 0, foodId);
-            } else {
-              currentFoods.push(foodId);
-            }
+            currentFoods.push(foodId);
           }
+
           newMenus[existingEntryIndex] = {
             ...newMenus[existingEntryIndex],
             foodIds: currentFoods
@@ -753,7 +807,7 @@ export default function MealAdminView() {
         }
         return newMenus;
       } else {
-        return [...prev, { id: Date.now().toString(), day, time, foodIds: [foodId] }];
+        return [...prev, { id: `${Date.now()}-${day}-${time}`, day, time, foodIds: [foodId] }];
       }
     });
   };
@@ -766,59 +820,55 @@ export default function MealAdminView() {
       const isFromGrid = active.data.current?.source === 'grid';
       const foodId = isFromGrid ? active.data.current?.foodId : (active.id as string);
       const food = foodDb.find(f => f.id === foodId);
-      
+
       const overId = over.id as string;
-      const overParts = overId.split('-');
-      
+      const overItem = parseGridItemId(overId); // 개별 항목 위에 놓았으면 값이 있다
+
       let targetDay: DayOfWeek;
       let targetTime: MealTime;
-      let isOverGridItem = false;
-      let overIdx = -1;
-
-      // ID 파싱 (UUID에 하이픈이 포함될 수 있으므로 뒤에서부터 파싱)
-      if (overId.startsWith('grid-mobile-')) {
-        targetDay = overParts[2] as DayOfWeek;
-        targetTime = overParts[3] as MealTime;
-        isOverGridItem = true;
-        overIdx = parseInt(overId.split('-').pop() || '-1');
-      } else if (overId.startsWith('grid-')) {
-        targetDay = overParts[1] as DayOfWeek;
-        targetTime = overParts[2] as MealTime;
-        isOverGridItem = true;
-        overIdx = parseInt(overId.split('-').pop() || '-1');
-      } else if (overId.startsWith('mobile-')) {
-        targetDay = overParts[1] as DayOfWeek;
-        targetTime = overParts[2] as MealTime;
+      if (overItem) {
+        targetDay = overItem.day;
+        targetTime = overItem.time;
       } else {
-        // desktop-
+        // `mobile-{요일}-{끼니}` 또는 `desktop-{요일}-{끼니}`
+        const overParts = overId.split('-');
         targetDay = overParts[1] as DayOfWeek;
         targetTime = overParts[2] as MealTime;
       }
+
+      // 놓을 위치는 화면 표시 순번이 아니라 실제 foodIds 기준으로 구한다.
+      // (foodDb에 없는 id가 섞이면 표시 순번과 데이터 순번이 어긋나기 때문)
+      const targetEntry = menus.find(m => m.day === targetDay && m.time === targetTime);
+      const dropIndex = overItem && targetEntry
+        ? targetEntry.foodIds.indexOf(overItem.foodId)
+        : -1;
 
       // 그리드 내에서 이동하는 경우
       if (isFromGrid) {
         const sourceDay = active.data.current?.day as DayOfWeek;
         const sourceTime = active.data.current?.time as MealTime;
-        const sourceIdx = active.data.current?.idx;
-        
+
         // 같은 칸 안에서 드롭한 경우 (정렬)
         if (sourceDay === targetDay && sourceTime === targetTime) {
-          if (isOverGridItem && sourceIdx !== overIdx) {
-            setMenus(prev => {
-              const entryIdx = prev.findIndex(m => m.day === sourceDay && m.time === sourceTime);
-              if (entryIdx === -1) return prev;
-              const newMenus = [...prev];
-              const newFoodIds = arrayMove(newMenus[entryIdx].foodIds, sourceIdx, overIdx);
-              newMenus[entryIdx] = { ...newMenus[entryIdx], foodIds: newFoodIds };
-              return newMenus;
-            });
-          }
+          setMenus(prev => {
+            const entryIdx = prev.findIndex(m => m.day === sourceDay && m.time === sourceTime);
+            if (entryIdx === -1) return prev;
+            const ids = prev[entryIdx].foodIds;
+            const from = ids.indexOf(foodId);
+            if (from === -1) return prev;
+            // 항목이 없는 빈 영역에 놓으면 맨 뒤로 보낸다
+            const to = dropIndex >= 0 ? dropIndex : ids.length - 1;
+            if (from === to) return prev;
+            const newMenus = [...prev];
+            newMenus[entryIdx] = { ...newMenus[entryIdx], foodIds: arrayMove(ids, from, to) };
+            return newMenus;
+          });
           return;
         }
-        
-        // 다른 칸으로 이동
+
+        // 다른 칸으로 이동 — 놓은 자리에 삽입
         removeFood(sourceDay, sourceTime, foodId);
-        addFoodToCell(foodId, targetDay, targetTime);
+        addFoodToCell(foodId, targetDay, targetTime, dropIndex >= 0 ? dropIndex : undefined);
         return;
       }
 
@@ -829,7 +879,8 @@ export default function MealAdminView() {
         return;
       }
 
-      addFoodToCell(foodId, targetDay, targetTime);
+      // 음식 DB에서 끌어온 경우도 놓은 자리에 삽입
+      addFoodToCell(foodId, targetDay, targetTime, dropIndex >= 0 ? dropIndex : undefined);
       setSelectedChosung('전체');
       setSearchQuery('');
     }
@@ -1065,21 +1116,6 @@ export default function MealAdminView() {
     });
   };
 
-  const filteredFoods = foodDb.filter(f => {
-    // 검색어가 있으면 카테고리 무시하고 전체 검색
-    if (searchQuery) {
-      if (!f.name.includes(searchQuery)) return false;
-    } else {
-      if (f.category !== activeTab) return false;
-    }
-    if (showFavoritesOnly && !(settings.favoriteFoodIds || []).includes(f.id)) return false;
-    if (selectedChosung !== '전체') {
-      const chosung = getChosungGroup(f.name.charAt(0));
-      if (chosung !== selectedChosung) return false;
-    }
-    return true;
-  });
-
   if (!isLoaded) return <div className="h-screen flex items-center justify-center">로딩중...</div>;
 
   const weekDates = getWeekDatesFromWeekStart(resolveWeekStart(settings.weekTitle || '', settings));
@@ -1128,7 +1164,7 @@ export default function MealAdminView() {
 
   return (
     <>
-    <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+    <DndContext sensors={sensors} collisionDetection={gridCollisionDetection} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <div className="flex flex-col md:flex-row h-screen bg-gray-100 md:p-4 md:gap-4 overflow-hidden">
       
       {/* Left Area: A4 Canvas Preview */}
