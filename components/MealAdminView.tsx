@@ -22,13 +22,15 @@ import { dummySettings, dummyTodayLunch } from '@/lib/dummyData';
 import { FoodItem, MealEntry, DayOfWeek, MealTime, Category, HistoryEntry, Settings, TodayLunch } from '@/lib/types';
 import { DroppableCell } from './DroppableCell';
 import { DraggableFoodItem } from './DraggableFoodItem';
-import { ImagePlus, Download, Save, ArrowLeft, Trash2, Plus, ChevronLeft, ChevronRight, Camera, Eye, EyeOff, List, History, Edit2 } from 'lucide-react';
+import { ImagePlus, Download, Save, ArrowLeft, Trash2, Plus, ChevronLeft, ChevronRight, Camera, Eye, EyeOff, List, History, Edit2, FileUp } from 'lucide-react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { uploadImageToStorage } from '@/lib/imageStorage';
 import { fetchLunchPhotos, saveLunchPhoto, deleteLunchPhoto, LunchPhotoMap } from '@/lib/lunchPhotos';
 import { fetchAllFoodItems } from '@/lib/foodItems';
 import ImageCropModal from './ImageCropModal';
+import HwpMealImportModal from './HwpMealImportModal';
+import type { HwpMealPlan, ImportedMealFood } from '@/lib/hwpMealParser';
 
 
 const TIMES: MealTime[] = ['아침', '점심', '저녁'];
@@ -249,6 +251,21 @@ const normalizeAiFood = (food: AiFoodCandidate, foodDb: FoodItem[]): ReviewFood 
   };
 };
 
+const normalizeFoodValue = (value?: string) => (value || '').replace(/\s+/g, ' ').trim();
+
+const getFoodIdentity = (food: Pick<FoodItem, 'name' | 'origin'> | ImportedMealFood) => (
+  `${normalizeFoodValue(food.name)}\u0000${normalizeFoodValue(food.origin)}`
+);
+
+const inferFoodCategory = (name: string): Category => {
+  const cleanName = normalizeFoodValue(name).replace(/^환자\s*:\s*/, '');
+
+  if (/(?:밥|라이스|죽|누룽지)$/.test(cleanName)) return '밥';
+  if (/(?:국|탕|찌개|전골|스프|수프)$/.test(cleanName)) return '국';
+  if (/(?:김치|무침|볶음|조림|전|튀김|찜|구이|나물|샐러드|잡채|장아찌|겉절이|불고기|생채)$/.test(cleanName)) return '반찬';
+  return '기타';
+};
+
 const getChosungGroup = (char: string) => {
   const mapping = ['ㄱ', 'ㄱ', 'ㄴ', 'ㄷ', 'ㄷ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅂ', 'ㅅ', 'ㅅ', 'ㅇ', 'ㅈ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'];
   const code = char.charCodeAt(0) - 0xAC00;
@@ -377,6 +394,7 @@ export default function MealAdminView() {
   const [isMobileFoodPanelOpen, setIsMobileFoodPanelOpen] = useState(false);
   const [isKimchiModalOpen, setIsKimchiModalOpen] = useState(false);
   const [isHistoryManageModalOpen, setIsHistoryManageModalOpen] = useState(false);
+  const [isHwpImportModalOpen, setIsHwpImportModalOpen] = useState(false);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [aiInputText, setAiInputText] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -774,6 +792,102 @@ export default function MealAdminView() {
     setIsWeekModalOpen(true);
   };
 
+  const handleHwpImport = async (plan: HwpMealPlan): Promise<boolean> => {
+    const notices: string[] = [];
+    if (menus.some((menu) => menu.foodIds.length > 0)) {
+      notices.push('현재 편집 중인 식단 내용이 HWP 파일의 내용으로 교체됩니다.');
+    }
+
+    const duplicateWeek = history.find((entry) => getHistoryWeekStart(entry) === plan.weekStart);
+    if (duplicateWeek) {
+      notices.push(`같은 기간의 '${duplicateWeek.weekTitle}' 기록이 있습니다. 저장하면 기존 기록을 덮어씁니다.`);
+    }
+
+    if (notices.length > 0 && !confirm(`${notices.join('\n\n')}\n\n계속하시겠습니까?`)) {
+      return false;
+    }
+
+    const foodByIdentity = new Map(foodDb.map((food) => [getFoodIdentity(food), food]));
+    const categoryByName = new Map(
+      foodDb.map((food) => [normalizeFoodValue(food.name), food.category]),
+    );
+    const newFoodMap = new Map<string, Pick<FoodItem, 'name' | 'category' | 'origin'>>();
+
+    plan.menus.forEach((menu) => {
+      menu.foods.forEach((food) => {
+        const identity = getFoodIdentity(food);
+        if (foodByIdentity.has(identity) || newFoodMap.has(identity)) return;
+
+        const name = normalizeFoodValue(food.name);
+        const origin = normalizeFoodValue(food.origin);
+        newFoodMap.set(identity, {
+          name,
+          category: categoryByName.get(name) || inferFoodCategory(name),
+          origin: origin || undefined,
+        });
+      });
+    });
+
+    let finalFoodDb = [...foodDb];
+    const foodsToInsert = Array.from(newFoodMap.values()).map((food) => ({
+      name: food.name,
+      category: food.category,
+      origin: food.origin || '',
+    }));
+
+    if (foodsToInsert.length > 0) {
+      const { data, error } = await supabase
+        .from('food_items')
+        .insert(foodsToInsert)
+        .select();
+
+      if (error) throw new Error(`새 음식 DB 추가 실패: ${error.message}`);
+      if (!data || data.length !== foodsToInsert.length) {
+        throw new Error('새 음식이 모두 저장되지 않아 식단표 반영을 중단했습니다.');
+      }
+      finalFoodDb = [...finalFoodDb, ...(data as FoodItem[])];
+    }
+
+    const finalFoodByIdentity = new Map(
+      finalFoodDb.map((food) => [getFoodIdentity(food), food]),
+    );
+    const importedMenus: MealEntry[] = plan.menus.map((menu, index) => {
+      const foodIds = menu.foods.map((food) => {
+        const matchedFood = finalFoodByIdentity.get(getFoodIdentity(food));
+        if (!matchedFood) {
+          throw new Error(`'${food.name}' 메뉴를 음식 DB와 연결하지 못했습니다.`);
+        }
+        return matchedFood.id;
+      });
+
+      return {
+        id: `hwp-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`,
+        day: menu.day,
+        time: menu.time,
+        foodIds,
+      };
+    });
+
+    const { month, week } = getWeekMetaFromStart(plan.weekStart);
+    setFoodDb(finalFoodDb);
+    setMenus(importedMenus);
+    setSettings((previous) => ({
+      ...previous,
+      weekTitle: buildWeekTitle(month, week),
+      weekStart: plan.weekStart,
+      originText: plan.originText,
+    }));
+    setSelectedMonth(month);
+    setSelectedWeek(week);
+
+    alert(
+      `HWP 식단표를 반영했습니다.\n` +
+      `메뉴 ${plan.itemCount}개 · 새 음식 ${foodsToInsert.length}개\n\n` +
+      `내용을 확인한 뒤 상단의 '저장하기'를 눌러주세요.`,
+    );
+    return true;
+  };
+
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(event.active.id as string);
   };
@@ -1142,7 +1256,9 @@ export default function MealAdminView() {
 
   if (!isLoaded) return <div className="h-screen flex items-center justify-center">로딩중...</div>;
 
-  const weekDates = getWeekDatesFromWeekStart(resolveWeekStart(settings.weekTitle || '', settings));
+  const resolvedWeekStart = resolveWeekStart(settings.weekTitle || '', settings);
+  const weekDates = getWeekDatesFromWeekStart(resolvedWeekStart);
+  const hwpFallbackYear = parseLocalDate(resolvedWeekStart).getFullYear();
 
   // 새로만들기 모달용 파생값
   const selectedWeekTitle = buildWeekTitle(selectedMonth, selectedWeek);
@@ -1220,6 +1336,14 @@ export default function MealAdminView() {
             >
               <List size={16} />
               <span className="hidden md:inline whitespace-nowrap">기록 관리</span>
+            </button>
+            <button
+              onClick={() => setIsHwpImportModalOpen(true)}
+              className="bg-blue-600 text-white p-2 md:px-3 md:py-2 rounded shadow text-sm font-medium hover:bg-blue-700 flex shrink-0 items-center gap-2 whitespace-nowrap"
+              title="HWP 식단표 가져오기"
+            >
+              <FileUp size={16} />
+              <span className="hidden md:inline whitespace-nowrap">HWP 가져오기</span>
             </button>
             <button onClick={handleReset} className="bg-red-500 text-white p-2 md:px-3 md:py-2 rounded shadow text-sm font-medium hover:bg-red-600 flex shrink-0 items-center gap-2 whitespace-nowrap" title="새로 만들기">
               <Plus size={16} />
@@ -1861,7 +1985,21 @@ export default function MealAdminView() {
                 <div className="text-xs text-red-500 mt-1">저장되지 않은 변경사항이 삭제됩니다.</div>
               </button>
 
-              {/* 카드 3: AI 스마트 분석 */}
+              {/* 카드 3: HWP 파일 가져오기 */}
+              <button
+                onClick={() => {
+                  setIsWeekModalOpen(false);
+                  setIsHwpImportModalOpen(true);
+                }}
+                className="text-left p-4 border-2 border-blue-100 bg-blue-50 rounded-xl hover:border-blue-400 hover:bg-blue-100 transition-all"
+              >
+                <div className="flex items-center gap-2 font-bold text-blue-700 text-sm mb-0.5">
+                  <FileUp size={17} /> 한글(HWP) 파일로 만들기
+                </div>
+                <div className="text-xs text-blue-600">한글 파일의 날짜와 표 구조를 직접 읽어 식단표를 채웁니다.</div>
+              </button>
+
+              {/* 카드 4: AI 스마트 분석 */}
               <button
                 disabled={isDuplicateSelected}
                 onClick={() => {
@@ -2044,6 +2182,14 @@ export default function MealAdminView() {
             </div>
           </div>
         </div>
+      )}
+
+      {isHwpImportModalOpen && (
+        <HwpMealImportModal
+          fallbackYear={hwpFallbackYear}
+          onApply={handleHwpImport}
+          onClose={() => setIsHwpImportModalOpen(false)}
+        />
       )}
 
       {/* AI Smart Import Modal */}
