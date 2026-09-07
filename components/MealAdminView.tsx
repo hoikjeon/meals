@@ -27,6 +27,7 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { uploadImageToStorage } from '@/lib/imageStorage';
 import { fetchLunchPhotos, saveLunchPhoto, deleteLunchPhoto, LunchPhotoMap } from '@/lib/lunchPhotos';
+import { fetchAllFoodItems } from '@/lib/foodItems';
 import ImageCropModal from './ImageCropModal';
 
 
@@ -185,6 +186,15 @@ const normalizeSettingsWeekStart = (settings: Settings, weekTitle = settings.wee
 
 const getHistoryWeekStart = (entry: Pick<HistoryEntry, 'weekTitle' | 'settings'>) => (
   resolveWeekStart(entry.weekTitle, entry.settings)
+);
+
+/**
+ * 주 시작일 오름차순(오래된 → 최신) 사본을 만든다.
+ * history 배열은 최신순 정렬 + 사용자의 수동 정렬(historyOrder)이 섞여 있어
+ * 배열 순서가 시간순을 보장하지 않으므로, 시간 기준 이동에는 이 사본을 쓴다.
+ */
+const sortByWeekStartAsc = (entries: HistoryEntry[]) => (
+  [...entries].sort((a, b) => getHistoryWeekStart(a).localeCompare(getHistoryWeekStart(b)))
 );
 
 const sortMealHistoryDesc = (a: MealHistoryRow, b: MealHistoryRow) => {
@@ -395,13 +405,9 @@ export default function MealAdminView() {
 
   useEffect(() => {
     const fetchData = async () => {
-      // 1. Food DB 로드
-      const { data: foodData, error: foodError } = await supabase
-        .from('food_items')
-        .select('*')
-        .order('name', { ascending: true });
-      if (foodData) setFoodDb(foodData);
-      else if (foodError) console.error('Error fetching food items:', foodError);
+      // 1. Food DB 로드 (1000개 초과분이 잘리지 않도록 페이지 단위로 전부 가져온다)
+      const foodData = await fetchAllFoodItems();
+      if (foodData.length > 0) setFoodDb(foodData);
 
       // 2. 현재 식단 상태 로드
       const { data: stateData } = await supabase
@@ -440,7 +446,10 @@ export default function MealAdminView() {
       if (todayIdx >= 0) {
         entryToLoad = historyEntries[todayIdx];
       } else if (historyEntries.length > 0) {
-        entryToLoad = historyEntries[historyEntries.length - 1];
+        // 오늘이 포함된 주차가 없으면 '가장 최근' 주차를 불러온다.
+        // (배열 순서는 수동 정렬로 뒤바뀔 수 있으므로 날짜 기준으로 고른다)
+        const byDate = sortByWeekStartAsc(historyEntries);
+        entryToLoad = byDate[byDate.length - 1];
       } else if (stateData) {
         entryToLoad = stateData;
       }
@@ -658,8 +667,16 @@ export default function MealAdminView() {
         .insert({ week_title: settingsForSave.weekTitle, menus, settings: settingsForSave, today_lunch: todayLunch }));
     }
 
+    // 주차 기록 저장이 실패하면 관리자가 다시 들어왔을 때 이전 내용이 보이므로 반드시 알린다.
     if (historyError) {
-      console.warn('Error saving history:', historyError);
+      console.error('Error saving history:', historyError);
+      if (showNotification) {
+        alert(
+          '주차 기록 저장 실패: ' + (historyError.message || '알 수 없는 오류') +
+          '\n\n화면의 현재 상태만 저장되었고 주차 기록에는 반영되지 않았습니다.'
+        );
+      }
+      return;
     }
 
     // 3. 최신 히스토리 다시 불러오기
@@ -706,26 +723,33 @@ export default function MealAdminView() {
       return;
     }
     
-    const currentIndex = history.findIndex(h => h.weekTitle === settings.weekTitle);
-    let targetIndex = currentIndex;
-    
+    // ◀/▶ 이동은 목록 표시 순서가 아니라 항상 날짜 순서를 따른다.
+    // (◀ = 이전 주차 = 더 과거, ▶ = 다음 주차 = 더 최근)
+    const byDate = sortByWeekStartAsc(history);
+    const currentIndex = byDate.findIndex(h => h.weekTitle === settings.weekTitle);
+    let targetIndex: number;
+
     if (currentIndex === -1) {
-      targetIndex = direction === 'prev' ? history.length - 1 : 0;
+      // 편집 중인 주차가 아직 기록에 없으면, 날짜상 어디에 끼는지를 기준으로 앞뒤를 찾는다
+      const currentStart = resolveWeekStart(settings.weekTitle || '', settings);
+      const nextPos = byDate.findIndex(h => getHistoryWeekStart(h) > currentStart);
+      targetIndex = direction === 'prev'
+        ? (nextPos === -1 ? byDate.length - 1 : nextPos - 1)
+        : (nextPos === -1 ? byDate.length : nextPos);
     } else {
-      if (direction === 'prev') targetIndex = currentIndex - 1;
-      if (direction === 'next') targetIndex = currentIndex + 1;
+      targetIndex = direction === 'prev' ? currentIndex - 1 : currentIndex + 1;
     }
 
     if (targetIndex < 0) {
       alert('가장 오래된 기록입니다.');
       return;
     }
-    if (targetIndex >= history.length) {
+    if (targetIndex >= byDate.length) {
       alert('가장 최근 기록입니다.');
       return;
     }
 
-    const selected = history[targetIndex];
+    const selected = byDate[targetIndex];
     const currentData = JSON.stringify({ menus, settings, todayLunch });
     const hasChanges = lastSavedData !== currentData;
 

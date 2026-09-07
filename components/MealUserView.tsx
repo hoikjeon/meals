@@ -10,6 +10,7 @@ import { BellRing, ChevronLeft, ChevronRight, Camera, Download, Settings, Calend
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { fetchLunchPhotos, LunchPhotoMap } from '@/lib/lunchPhotos';
+import { fetchAllFoodItems } from '@/lib/foodItems';
 
 
 const TIMES: MealTime[] = ['아침', '점심', '저녁'];
@@ -154,14 +155,15 @@ export default function MealUserView() {
   useEffect(() => {
     const fetchData = async () => {
       // 세 쿼리를 병렬로 실행해 초기 로딩 시간 단축
-      const [{ data: foodData }, { data: stateData }, { data: historyData }] = await Promise.all([
-        supabase.from('food_items').select('*').order('name', { ascending: true }),
+      const [foodData, { data: stateData }, { data: historyData }] = await Promise.all([
+        // 1000개를 넘으면 뒷부분이 잘려 해당 메뉴가 표에서 사라지므로 페이지 단위로 전부 가져온다
+        fetchAllFoodItems(),
         supabase.from('current_meal_state').select('*').eq('id', 1).single(),
         // today_lunch(주차별 점심 사진, base64로 수 MB)는 사용자 화면에서 쓰지 않으므로 제외
         supabase.from('meal_history').select('id, week_title, menus, settings'),
       ]);
 
-      if (foodData) setFoodDb(foodData);
+      if (foodData.length > 0) setFoodDb(foodData);
 
       if (stateData) {
         setMenus(stateData.menus);
