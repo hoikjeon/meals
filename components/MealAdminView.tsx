@@ -22,7 +22,7 @@ import { dummySettings, dummyTodayLunch } from '@/lib/dummyData';
 import { FoodItem, MealEntry, DayOfWeek, MealTime, Category, HistoryEntry, Settings, TodayLunch } from '@/lib/types';
 import { DroppableCell } from './DroppableCell';
 import { DraggableFoodItem } from './DraggableFoodItem';
-import { ImagePlus, Download, Save, ArrowLeft, Trash2, Plus, ChevronLeft, ChevronRight, Camera, Eye, EyeOff, List, History, Edit2, FileUp } from 'lucide-react';
+import { ImagePlus, Download, Save, ArrowLeft, Trash2, Plus, ChevronLeft, ChevronRight, Camera, Eye, EyeOff, List, History, Edit2, FileUp, Sparkles, X } from 'lucide-react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { uploadImageToStorage } from '@/lib/imageStorage';
@@ -580,15 +580,17 @@ export default function MealAdminView() {
 
   if (!isAuthenticated) {
     return (
-      <div className="fixed inset-0 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center z-50">
-        <div className="bg-white rounded-2xl shadow-2xl w-[400px] max-w-[90vw] overflow-hidden">
+      <div className="admin-apple-shell fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-[linear-gradient(145deg,#e8f1ff_0%,#f8fafc_52%,#e9eef7_100%)] p-4">
+        <div aria-hidden="true" className="absolute -left-24 -top-28 h-96 w-96 rounded-full bg-blue-300/30 blur-3xl" />
+        <div aria-hidden="true" className="absolute -bottom-32 right-0 h-96 w-96 rounded-full bg-indigo-200/40 blur-3xl" />
+        <div className="relative w-[400px] max-w-[94vw] overflow-hidden rounded-[30px] border border-white/80 bg-white/68 shadow-[0_30px_90px_-34px_rgba(15,23,42,0.55)] backdrop-blur-2xl">
           {/* 헤더 */}
-          <div className="bg-gradient-to-r from-orange-500 to-orange-600 p-6 text-center">
-            <div className="bg-white p-3 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg w-fit">
+          <div className="border-b border-slate-200/60 bg-white/25 p-7 text-center">
+            <div className="mx-auto mb-4 flex w-fit items-center justify-center rounded-2xl border border-white bg-white/80 p-3 shadow-sm">
               <img src="/images/yslogo.png" alt="연세척병원 로고" className="h-12 w-auto object-contain" />
             </div>
-            <h2 className="text-xl font-bold text-white">관리자 로그인</h2>
-            <p className="text-orange-100 text-sm mt-1">식단표 관리 페이지에 접근하려면 로그인하세요.</p>
+            <h2 className="text-2xl font-bold tracking-[-0.035em] text-slate-950">관리자 로그인</h2>
+            <p className="mt-1.5 text-sm font-medium text-slate-500">식단표 관리 페이지에 로그인하세요.</p>
           </div>
 
           {/* 로그인 폼 */}
@@ -599,7 +601,7 @@ export default function MealAdminView() {
                 type="text"
                 value={loginId}
                 onChange={(e) => { setLoginId(e.target.value); setLoginError(''); }}
-                className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 focus:outline-none transition-all text-gray-800"
+                className="w-full rounded-xl border border-white/90 bg-white/70 px-4 py-2.5 text-slate-800 shadow-inner outline-none transition-all focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
                 placeholder="아이디를 입력하세요"
                 autoFocus
               />
@@ -611,7 +613,7 @@ export default function MealAdminView() {
                   type={showPassword ? 'text' : 'password'}
                   value={loginPw}
                   onChange={(e) => { setLoginPw(e.target.value); setLoginError(''); }}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2.5 pr-10 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 focus:outline-none transition-all text-gray-800"
+                  className="w-full rounded-xl border border-white/90 bg-white/70 px-4 py-2.5 pr-10 text-slate-800 shadow-inner outline-none transition-all focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
                   placeholder="비밀번호를 입력하세요"
                 />
                 <button
@@ -625,13 +627,13 @@ export default function MealAdminView() {
             </div>
 
             {loginError && (
-              <p className="text-red-500 text-sm font-medium bg-red-50 px-3 py-2 rounded-lg">{loginError}</p>
+              <p className="rounded-xl border border-rose-200/70 bg-rose-50/80 px-3 py-2 text-sm font-medium text-rose-600">{loginError}</p>
             )}
 
             <button
               type="submit"
               disabled={isLoggingIn}
-              className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-3 rounded-lg font-bold hover:from-orange-600 hover:to-orange-700 transition-all shadow-md hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
+              className="w-full rounded-xl bg-[#0071e3] py-3 font-semibold text-white shadow-[0_10px_24px_-10px_rgba(0,113,227,0.9)] transition-all hover:-translate-y-0.5 hover:bg-[#0077ed] hover:shadow-[0_12px_28px_-10px_rgba(0,113,227,0.95)] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isLoggingIn ? '로그인 중...' : '로그인'}
             </button>
@@ -1305,65 +1307,86 @@ export default function MealAdminView() {
   return (
     <>
     <DndContext sensors={sensors} collisionDetection={gridCollisionDetection} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-      <div className="flex flex-col md:flex-row h-screen bg-gray-100 md:p-4 md:gap-4 overflow-hidden">
-      
-      {/* Left Area: A4 Canvas Preview */}
-      <div className="flex-1 overflow-y-auto flex flex-col items-center p-3 md:p-0">
+      <div className="admin-apple-shell relative flex h-screen flex-col overflow-hidden bg-[linear-gradient(145deg,#eaf2ff_0%,#f7f9fc_46%,#edf2f8_100%)] text-[#1d1d1f]">
+        <div aria-hidden="true" className="pointer-events-none absolute -left-24 -top-36 h-96 w-96 rounded-full bg-blue-300/25 blur-3xl" />
+        <div aria-hidden="true" className="pointer-events-none absolute -bottom-48 right-20 h-[30rem] w-[30rem] rounded-full bg-indigo-200/30 blur-3xl" />
+
         {/* Header */}
-        <div className="flex w-full max-w-[800px] items-center gap-3 mb-3 md:mb-4">
-          <div className="flex shrink-0 min-w-fit items-center gap-2 md:gap-4">
-            <Link href="/" className="shrink-0 p-2 bg-gray-200 text-gray-700 rounded-full hover:bg-gray-300 transition-colors" title="사용자 화면으로 돌아가기">
-              <ArrowLeft size={18} />
-            </Link>
-            <div className="flex items-center gap-2 min-w-0">
-              <img src="/images/yslogo.png" alt="로고" className="h-6 md:h-8 w-auto object-contain" />
-              <h1 className="text-base md:text-2xl font-bold text-gray-800 whitespace-nowrap leading-tight">식단표 관리</h1>
+        <header className="relative z-20 shrink-0 px-3 pt-3 md:px-5 md:pt-5">
+          <div className="mx-auto flex w-full max-w-[1800px] flex-wrap items-center gap-2 rounded-[22px] border border-white/80 bg-white/60 px-3 py-2.5 shadow-[0_20px_55px_-34px_rgba(15,23,42,0.55)] backdrop-blur-2xl md:flex-nowrap md:gap-4 md:px-4 md:py-3">
+            <div className="flex min-w-fit shrink-0 items-center gap-2.5 md:gap-3">
+              <Link
+                href="/"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/90 bg-white/70 text-slate-600 shadow-sm transition-all hover:-translate-y-0.5 hover:bg-white hover:text-slate-950 hover:shadow-md"
+                title="사용자 화면으로 돌아가기"
+              >
+                <ArrowLeft size={17} strokeWidth={2.2} />
+              </Link>
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/75 shadow-sm ring-1 ring-black/[0.04]">
+                  <img src="/images/yslogo.png" alt="로고" className="h-7 w-auto object-contain" />
+                </div>
+                <div>
+                  <h1 className="whitespace-nowrap text-lg font-bold leading-none tracking-[-0.025em] text-slate-950 md:text-xl">식단표 관리</h1>
+                  <p className="mt-1 hidden text-[11px] font-medium text-slate-500 md:block">주간 식단 편집 및 발행</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="order-3 flex w-full items-center justify-between gap-1 rounded-2xl border border-white/75 bg-white/45 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] md:order-none md:ml-auto md:w-auto md:justify-end">
+              <button
+                onClick={() => setIsBgModalOpen(true)}
+                className="flex h-9 min-w-0 flex-1 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl px-2.5 text-xs font-semibold text-slate-600 transition-all hover:bg-white/90 hover:text-slate-950 hover:shadow-sm md:flex-none md:px-3"
+                title="배경 설정"
+              >
+                <ImagePlus size={15} />
+                <span className="hidden lg:inline">배경</span>
+              </button>
+              <button
+                onClick={() => setIsHistoryManageModalOpen(true)}
+                className="flex h-9 min-w-0 flex-1 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl px-2.5 text-xs font-semibold text-slate-600 transition-all hover:bg-white/90 hover:text-slate-950 hover:shadow-sm md:flex-none md:px-3"
+                title="기록 관리"
+              >
+                <List size={15} />
+                <span className="hidden lg:inline">기록</span>
+              </button>
+              <div className="mx-0.5 hidden h-5 w-px bg-slate-300/60 md:block" />
+              <button
+                onClick={handleReset}
+                className="flex h-9 min-w-0 flex-1 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl bg-slate-900/90 px-2.5 text-xs font-semibold text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-slate-950 hover:shadow-md md:flex-none md:px-3.5"
+                title="새로 만들기"
+              >
+                <Plus size={15} />
+                <span className="hidden sm:inline">새로 만들기</span>
+              </button>
+              <button
+                onClick={handlePdfDownload}
+                className="hidden h-9 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl px-3 text-xs font-semibold text-slate-600 transition-all hover:bg-white/90 hover:text-slate-950 hover:shadow-sm sm:flex"
+                title="PDF 다운로드"
+              >
+                <Download size={15} />
+                <span className="hidden xl:inline">PDF</span>
+              </button>
+              <button
+                onClick={handleSave}
+                className="flex h-9 min-w-0 flex-1 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl bg-[#0071e3] px-2.5 text-xs font-semibold text-white shadow-[0_6px_16px_-7px_rgba(0,113,227,0.9)] transition-all hover:-translate-y-0.5 hover:bg-[#0077ed] hover:shadow-[0_8px_20px_-7px_rgba(0,113,227,0.95)] md:flex-none md:px-4"
+                title="저장하기"
+              >
+                <Save size={15} />
+                <span className="hidden sm:inline">저장하기</span>
+              </button>
             </div>
           </div>
-          <div className="ml-auto flex min-w-0 max-w-full gap-1.5 md:gap-2 items-center justify-end overflow-x-auto pb-1 -mb-1">
-            <button 
-              onClick={() => setIsBgModalOpen(true)}
-              className="bg-white p-2 md:px-3 md:py-2 rounded shadow text-sm font-medium hover:bg-gray-50 flex shrink-0 items-center gap-2 whitespace-nowrap"
-              title="배경"
-            >
-              <ImagePlus size={16} />
-              <span className="hidden md:inline whitespace-nowrap">배경</span>
-            </button>
-            <button 
-              onClick={() => setIsHistoryManageModalOpen(true)} 
-              className="bg-gray-600 text-white p-2 md:px-3 md:py-2 rounded shadow text-sm font-medium hover:bg-gray-700 flex shrink-0 items-center gap-2 whitespace-nowrap" 
-              title="히스토리 관리"
-            >
-              <List size={16} />
-              <span className="hidden md:inline whitespace-nowrap">기록 관리</span>
-            </button>
-            <button
-              onClick={() => setIsHwpImportModalOpen(true)}
-              className="bg-blue-600 text-white p-2 md:px-3 md:py-2 rounded shadow text-sm font-medium hover:bg-blue-700 flex shrink-0 items-center gap-2 whitespace-nowrap"
-              title="HWP 식단표 가져오기"
-            >
-              <FileUp size={16} />
-              <span className="hidden md:inline whitespace-nowrap">HWP 가져오기</span>
-            </button>
-            <button onClick={handleReset} className="bg-red-500 text-white p-2 md:px-3 md:py-2 rounded shadow text-sm font-medium hover:bg-red-600 flex shrink-0 items-center gap-2 whitespace-nowrap" title="새로 만들기">
-              <Plus size={16} />
-              <span className="hidden md:inline whitespace-nowrap">새로 만들기</span>
-            </button>
-            <button onClick={handlePdfDownload} className="bg-blue-600 text-white p-2 md:px-3 md:py-2 rounded shadow text-sm font-medium hover:bg-blue-700 shrink-0 items-center gap-2 whitespace-nowrap hidden md:flex" title="PDF 다운로드">
-              <Download size={16} />
-              <span className="hidden md:inline whitespace-nowrap">PDF 다운로드</span>
-            </button>
-            <button onClick={handleSave} className="bg-green-600 text-white p-2 md:px-3 md:py-2 rounded shadow text-sm font-medium hover:bg-green-700 flex shrink-0 items-center gap-2 whitespace-nowrap" title="저장하기">
-              <Save size={16} />
-              <span className="hidden md:inline whitespace-nowrap">저장하기</span>
-            </button>
-          </div>
-        </div>
+        </header>
+
+        <div className="relative z-10 flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-3 pt-2 md:flex-row md:gap-5 md:p-5 md:pt-3">
+      {/* Left Area: A4 Canvas Preview */}
+      <div className="flex min-h-0 flex-1 flex-col items-center overflow-y-auto rounded-[26px] border border-white/75 bg-white/35 p-3 shadow-[0_24px_60px_-42px_rgba(15,23,42,0.6)] backdrop-blur-xl md:p-4">
 
         {/* 모바일 전용 식단 편집 */}
         <div className="md:hidden w-full mb-4">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="flex flex-col items-center p-3 border-b border-gray-200">
+          <div className="overflow-hidden rounded-[22px] border border-white/80 bg-white/65 shadow-[0_18px_45px_-32px_rgba(15,23,42,0.65)] backdrop-blur-xl">
+            <div className="flex flex-col items-center border-b border-slate-200/60 p-3">
               <img src="/images/yslogo.png" alt="로고" className="h-6 mb-1 object-contain" />
               <h2 className="text-lg font-bold" style={{ color: settings.titleColor || '#f97316' }}>주간 식단표</h2>
               <div className="flex items-center justify-center gap-2 mt-1">
@@ -1375,7 +1398,7 @@ export default function MealAdminView() {
                     weekTitle: e.target.value,
                     weekStart: getWeekStartFromTitle(e.target.value) || settings.weekStart
                   })}
-                  className="text-center bg-transparent border-b border-gray-300 focus:outline-none font-bold text-gray-700 text-sm w-48"
+                  className="w-48 border-b border-slate-300 bg-transparent text-center text-sm font-bold text-slate-700 focus:border-[#0071e3] focus:outline-none"
                   placeholder="예: 3월 1주차 식단표"
                 />
                 <button onClick={() => handleLoadHistory('next')} className="p-1 text-gray-400"><ChevronRight size={16} /></button>
@@ -1442,9 +1465,9 @@ export default function MealAdminView() {
               </table>
             </div>
             {/* 원산지 편집 */}
-            <div className="p-3 border-t border-gray-200">
+            <div className="border-t border-slate-200/60 p-3">
               <textarea 
-                className="w-full text-[10px] p-2 border border-gray-200 rounded resize-none focus:ring-1 focus:ring-orange-400 focus:outline-none"
+                className="w-full resize-none rounded-xl border border-white/90 bg-white/65 p-2 text-[10px] shadow-inner outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-500/10"
                 rows={3}
                 value={settings.originText}
                 onChange={(e) => setSettings({...settings, originText: e.target.value})}
@@ -1613,21 +1636,24 @@ export default function MealAdminView() {
       </div>
 
       {/* Right Area: Component Block (데스크탑) */}
-      <div className="hidden md:flex w-80 bg-white shadow-lg flex-col rounded-xl border border-gray-200 overflow-hidden">
-        <div className="p-4 bg-gray-50 border-b border-gray-200">
+      <aside className="hidden w-[340px] shrink-0 flex-col overflow-hidden rounded-[26px] border border-white/80 bg-white/58 shadow-[0_24px_60px_-38px_rgba(15,23,42,0.65)] backdrop-blur-2xl md:flex">
+        <div className="border-b border-slate-200/60 bg-white/30 p-4">
           <div className="flex justify-between items-center mb-3">
-            <h2 className="font-bold text-lg">음식 데이터베이스</h2>
+            <div>
+              <h2 className="text-base font-bold tracking-[-0.02em] text-slate-950">음식 데이터베이스</h2>
+              <p className="mt-0.5 text-[11px] font-medium text-slate-500">메뉴를 끌어 식단표에 놓으세요</p>
+            </div>
             <button 
               onClick={() => {
                 setEditingFood({ id: Date.now().toString(), name: '', category: activeTab, origin: '' });
                 setIsFoodModalOpen(true);
               }}
-              className="bg-blue-100 text-blue-600 px-2 py-1 rounded text-xs font-bold hover:bg-blue-200 flex items-center gap-1"
+              className="flex h-8 items-center gap-1 rounded-xl border border-blue-200/70 bg-blue-50/80 px-2.5 text-xs font-bold text-[#0071e3] transition-all hover:bg-blue-100 hover:shadow-sm"
             >
               <Plus size={14} /> 추가
             </button>
           </div>
-          <div className="flex gap-2 mb-2">
+          <div className="mb-2 flex gap-1 rounded-xl bg-slate-200/55 p-1 shadow-inner">
             {CATEGORIES.map(cat => (
               <button 
                 key={cat}
@@ -1636,7 +1662,7 @@ export default function MealAdminView() {
                   setSelectedChosung('전체');
                   setSearchQuery('');
                 }}
-                className={`flex-1 py-1 px-2 rounded text-sm font-medium transition-colors ${activeTab === cat ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                className={`flex-1 rounded-lg px-2 py-1.5 text-xs font-semibold transition-all ${activeTab === cat ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}
               >
                 {cat}
               </button>
@@ -1646,7 +1672,7 @@ export default function MealAdminView() {
             <input 
               type="text" 
               placeholder="음식 이름 검색..." 
-              className="w-full text-sm border border-gray-300 rounded p-1.5 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+              className="w-full rounded-xl border border-white/90 bg-white/65 px-3 py-2 text-sm text-slate-800 shadow-inner outline-none transition placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
@@ -1657,16 +1683,16 @@ export default function MealAdminView() {
           <div className="flex flex-wrap gap-1 mb-1 items-center">
             <button
               onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
-              className={`text-[10px] px-2 py-0.5 rounded transition-colors border flex items-center gap-1 ${showFavoritesOnly ? 'bg-yellow-400 text-yellow-900 font-bold border-yellow-500' : 'bg-white text-gray-500 border-gray-300 hover:bg-gray-50'}`}
+              className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] transition-all ${showFavoritesOnly ? 'border-amber-200 bg-amber-100/80 font-bold text-amber-800' : 'border-white/90 bg-white/60 text-slate-500 hover:bg-white'}`}
             >
               ★ 즐겨찾기
             </button>
-            <div className="w-[1px] h-3 bg-gray-300 mx-1"></div>
+            <div className="mx-1 h-3 w-px bg-slate-300/70"></div>
             {CHOSUNGS.map(cho => (
               <button
                 key={cho}
                 onClick={() => setSelectedChosung(cho)}
-                className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${selectedChosung === cho ? 'bg-gray-700 text-white font-bold' : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-100'}`}
+                className={`rounded-md px-1.5 py-1 text-[10px] transition-all ${selectedChosung === cho ? 'bg-slate-800 font-bold text-white shadow-sm' : 'border border-white/90 bg-white/55 text-slate-500 hover:bg-white hover:text-slate-900'}`}
               >
                 {cho}
               </button>
@@ -1674,7 +1700,7 @@ export default function MealAdminView() {
           </div>
         </div>
         
-        <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-2">
+        <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-4">
           {filteredFoods.map(food => (
               <DraggableFoodItem 
                 key={food.id} 
@@ -1700,11 +1726,11 @@ export default function MealAdminView() {
           ))}
         </div>
 
-        <div className="p-4 border-t border-gray-200 bg-gray-50">
-          <h3 className="font-bold text-sm mb-2">오늘의 점심 업로드</h3>
+        <div className="border-t border-slate-200/60 bg-white/25 p-4">
+          <h3 className="mb-2 text-sm font-bold text-slate-800">오늘의 점심 업로드</h3>
           <button
             onClick={() => { setLunchUploadDate(getTodayDateString()); setIsLunchModalOpen(true); }}
-            className="w-full border-2 border-dashed border-gray-300 rounded-lg p-4 flex flex-col items-center justify-center text-center hover:bg-gray-100 cursor-pointer transition-colors relative overflow-hidden group min-h-[120px]"
+            className="group relative flex min-h-[120px] w-full cursor-pointer flex-col items-center justify-center overflow-hidden rounded-2xl border border-dashed border-slate-300/80 bg-white/45 p-4 text-center transition-all hover:border-blue-300 hover:bg-white/75 hover:shadow-sm"
           >
             {lunchPhotos[getTodayDateString()] ? (
               <>
@@ -1725,10 +1751,10 @@ export default function MealAdminView() {
 
         {/* History Select Dropdown at Bottom */}
         {history.length > 0 && (
-          <div className="p-4 border-t border-gray-200 bg-gray-50">
-            <h3 className="font-bold text-sm mb-2 text-gray-700">과거 식단 불러오기</h3>
+          <div className="border-t border-slate-200/60 bg-white/25 p-4">
+            <h3 className="mb-2 text-sm font-bold text-slate-700">과거 식단 불러오기</h3>
             <select 
-              className="w-full bg-white border border-gray-300 rounded px-2 py-2 text-sm text-gray-700 focus:outline-none focus:border-blue-500 cursor-pointer shadow-sm"
+              className="w-full cursor-pointer rounded-xl border border-white/90 bg-white/65 px-3 py-2 text-sm text-slate-700 shadow-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-500/10"
               onChange={(e) => {
                 if (e.target.value) {
                   const selected = history.find(h => h.id === Number(e.target.value));
@@ -1747,11 +1773,13 @@ export default function MealAdminView() {
             <p className="text-[10px] text-gray-500 mt-1">* 저장하기를 누를 때마다 과거 식단에 저장됩니다.</p>
           </div>
         )}
+      </aside>
+
       </div>
 
       {/* 모바일: 오늘의 점심 업로드 플로팅 버튼 */}
       <label 
-        className="md:hidden fixed bottom-24 right-6 w-14 h-14 bg-orange-500 text-white rounded-full shadow-lg flex items-center justify-center z-30 hover:bg-orange-600 active:scale-95 transition-all cursor-pointer"
+        className="fixed bottom-24 right-5 z-30 flex h-14 w-14 cursor-pointer items-center justify-center rounded-full border border-white/80 bg-white/70 text-slate-700 shadow-[0_16px_35px_-14px_rgba(15,23,42,0.55)] backdrop-blur-xl transition-all hover:bg-white active:scale-95 md:hidden"
         title="오늘의 점심 사진 찍기"
       >
         <Camera size={28} />
@@ -1766,7 +1794,7 @@ export default function MealAdminView() {
       {/* 모바일: 음식DB 플로팅 버튼 */}
       <button
         onClick={() => setIsMobileFoodPanelOpen(true)}
-        className="md:hidden fixed bottom-6 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center z-30 hover:bg-blue-700 active:scale-95 transition-all"
+        className="fixed bottom-5 right-5 z-30 flex h-14 w-14 items-center justify-center rounded-full border border-white/30 bg-[#0071e3] text-white shadow-[0_16px_35px_-12px_rgba(0,113,227,0.75)] transition-all hover:bg-[#0077ed] active:scale-95 md:hidden"
       >
         <Plus size={28} />
       </button>
@@ -1774,13 +1802,13 @@ export default function MealAdminView() {
       {/* 모바일: 음식DB 슬라이드업 패널 */}
       {isMobileFoodPanelOpen && (
         <div className="md:hidden fixed inset-0 z-40">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setIsMobileFoodPanelOpen(false)} />
-          <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl max-h-[80vh] flex flex-col animate-in slide-in-from-bottom">
+          <div className="absolute inset-0 bg-slate-900/25 backdrop-blur-md" onClick={() => setIsMobileFoodPanelOpen(false)} />
+          <div className="absolute bottom-0 left-0 right-0 flex max-h-[82vh] flex-col rounded-t-[30px] border border-white/80 bg-white/78 shadow-[0_-24px_70px_-30px_rgba(15,23,42,0.6)] backdrop-blur-2xl animate-in slide-in-from-bottom">
             {/* 패널 핸들 */}
             <div className="flex justify-center pt-3 pb-1">
-              <div className="w-10 h-1 bg-gray-300 rounded-full" />
+              <div className="h-1 w-10 rounded-full bg-slate-300/80" />
             </div>
-            <div className="p-4 border-b border-gray-200">
+            <div className="border-b border-slate-200/60 p-4">
               <div className="flex justify-between items-center mb-3">
                 <h2 className="font-bold text-lg">음식 데이터베이스</h2>
                 <div className="flex gap-2">
@@ -1789,19 +1817,19 @@ export default function MealAdminView() {
                       setEditingFood({ id: Date.now().toString(), name: '', category: activeTab, origin: '' });
                       setIsFoodModalOpen(true);
                     }}
-                    className="bg-blue-100 text-blue-600 px-2 py-1 rounded text-xs font-bold hover:bg-blue-200 flex items-center gap-1"
+                    className="flex items-center gap-1 rounded-xl border border-blue-200/70 bg-blue-50/80 px-2.5 py-1.5 text-xs font-bold text-[#0071e3]"
                   >
                     <Plus size={14} /> 추가
                   </button>
                   <button onClick={() => setIsMobileFoodPanelOpen(false)} className="text-gray-400 hover:text-gray-600 text-lg font-bold">✕</button>
                 </div>
               </div>
-              <div className="flex gap-2 mb-2">
+              <div className="mb-2 flex gap-1 rounded-xl bg-slate-200/55 p-1 shadow-inner">
                 {CATEGORIES.map(cat => (
                   <button 
                     key={cat}
                     onClick={() => setActiveTab(cat)}
-                    className={`flex-1 py-1 px-2 rounded text-sm font-medium transition-colors ${activeTab === cat ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700'}`}
+                    className={`flex-1 rounded-lg px-2 py-1.5 text-xs font-semibold transition-all ${activeTab === cat ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500'}`}
                   >
                     {cat}
                   </button>
@@ -1810,7 +1838,7 @@ export default function MealAdminView() {
               <input 
                 type="text" 
                 placeholder="음식 이름 검색..." 
-                className="w-full text-sm border border-gray-300 rounded p-1.5 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                className="w-full rounded-xl border border-white/90 bg-white/65 px-3 py-2 text-sm text-slate-800 shadow-inner outline-none focus:border-blue-300 focus:ring-4 focus:ring-blue-500/10"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -1839,10 +1867,10 @@ export default function MealAdminView() {
               ))}
             </div>
             {/* 모바일 히스토리 */}
-            <div className="p-3 border-t border-gray-200">
+            <div className="border-t border-slate-200/60 p-3">
               <button 
                 onClick={() => { setIsHistoryManageModalOpen(true); setIsMobileFoodPanelOpen(false); }}
-                className="w-full bg-gray-600 text-white py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 shadow-sm"
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/90 bg-white/65 py-2.5 text-sm font-semibold text-slate-700 shadow-sm"
               >
                 <History size={18} /> 과거 식단 기록 관리
               </button>
@@ -1853,17 +1881,17 @@ export default function MealAdminView() {
 
       {/* Background Select Modal */}
       {isBgModalOpen && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
-          <div className="bg-white rounded-xl shadow-xl w-[600px] max-w-[90vw] overflow-hidden flex flex-col">
-            <div className="p-4 border-b flex justify-between items-center bg-gray-50">
-              <h2 className="font-bold text-lg">배경 이미지 선택</h2>
-              <button onClick={() => setIsBgModalOpen(false)} className="text-gray-500 hover:text-gray-800">✕</button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-3 backdrop-blur-xl">
+          <div className="flex w-[600px] max-w-[94vw] flex-col overflow-hidden rounded-[28px] border border-white/80 bg-white/80 shadow-[0_30px_90px_-34px_rgba(15,23,42,0.55)] backdrop-blur-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200/60 bg-white/25 p-5">
+              <h2 className="text-lg font-bold tracking-[-0.02em] text-slate-950">배경 이미지 선택</h2>
+              <button onClick={() => setIsBgModalOpen(false)} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/60 text-slate-400 shadow-sm hover:bg-white hover:text-slate-800"><X size={17} /></button>
             </div>
             
             <div className="p-4 overflow-y-auto max-h-[60vh]">
               <div className="grid grid-cols-3 gap-4">
                 {/* Custom Upload Button */}
-                <label className="border-2 border-dashed border-gray-300 rounded-lg aspect-[4/3] flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 transition-colors">
+                <label className="flex aspect-[4/3] cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300/80 bg-white/45 transition-all hover:border-blue-300 hover:bg-white/80 hover:shadow-sm">
                   <ImagePlus className="text-gray-400 mb-2" />
                   <span className="text-sm font-medium text-gray-600">내 PC에서 업로드</span>
                   <input type="file" className="hidden" accept="image/*" onChange={handleBgImageUpload} />
@@ -1874,7 +1902,7 @@ export default function MealAdminView() {
                   <button 
                     key={bg.id}
                     onClick={() => applyPresetBackground(bg.url, bg.color)}
-                    className="relative rounded-lg overflow-hidden aspect-[4/3] border-2 border-transparent hover:border-blue-500 transition-colors focus:outline-none"
+                    className="relative aspect-[4/3] overflow-hidden rounded-2xl border border-white/80 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md focus:outline-none"
                     style={{ backgroundColor: bg.color }}
                   >
                     {bg.url && (
@@ -1894,21 +1922,32 @@ export default function MealAdminView() {
       {/* Week Select Modal */}
       {isWeekModalOpen && (
         <div
-          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-3 backdrop-blur-xl"
           onKeyDown={(e) => { if (e.key === 'Escape') setIsWeekModalOpen(false); }}
           tabIndex={-1}
         >
-          <div className="bg-white rounded-xl shadow-xl w-[460px] max-w-[90vw] flex flex-col p-6">
+          <div className="flex max-h-[94vh] w-full max-w-[720px] flex-col overflow-y-auto rounded-[30px] border border-white/80 bg-white/78 p-5 shadow-[0_30px_90px_-34px_rgba(15,23,42,0.55)] backdrop-blur-2xl sm:p-7">
             {/* 헤더 */}
-            <h2 className="font-bold text-xl mb-1 text-gray-800">새로운 식단표 만들기</h2>
-            <p className="text-sm text-gray-500 mb-5">만들 주차를 선택하고 작업 방식을 골라주세요.</p>
+            <div className="mb-6 flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-2xl font-bold tracking-[-0.035em] text-slate-950">새로운 식단표</h2>
+                <p className="mt-1 text-sm font-medium text-slate-500">기간을 선택하고 시작 방법을 골라주세요.</p>
+              </div>
+              <button
+                onClick={() => setIsWeekModalOpen(false)}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/90 bg-white/65 text-slate-400 shadow-sm transition hover:bg-white hover:text-slate-800"
+                aria-label="닫기"
+              >
+                <X size={18} />
+              </button>
+            </div>
 
             {/* 월/주차 선택 */}
-            <div className="flex gap-3 mb-2">
+            <div className="mb-3 grid grid-cols-2 gap-3 rounded-2xl border border-white/80 bg-slate-100/60 p-3 shadow-inner">
               <div className="flex-1">
-                <label className="block text-xs font-medium text-gray-600 mb-1">월 선택</label>
+                <label className="mb-1.5 block text-[11px] font-bold text-slate-500">월 선택</label>
                 <select
-                  className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none"
+                  className="w-full rounded-xl border border-white/90 bg-white/80 px-3 py-2.5 text-sm font-semibold text-slate-800 shadow-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-500/10"
                   value={selectedMonth}
                   onChange={(e) => setSelectedMonth(Number(e.target.value))}
                 >
@@ -1918,9 +1957,9 @@ export default function MealAdminView() {
                 </select>
               </div>
               <div className="flex-1">
-                <label className="block text-xs font-medium text-gray-600 mb-1">주차 선택</label>
+                <label className="mb-1.5 block text-[11px] font-bold text-slate-500">주차 선택</label>
                 <select
-                  className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none"
+                  className="w-full rounded-xl border border-white/90 bg-white/80 px-3 py-2.5 text-sm font-semibold text-slate-800 shadow-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-500/10"
                   value={selectedWeek}
                   onChange={(e) => setSelectedWeek(Number(e.target.value))}
                 >
@@ -1933,15 +1972,16 @@ export default function MealAdminView() {
               </div>
             </div>
 
-            <div className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 mb-3">
-              선택 기간: <span className="font-semibold text-gray-700">{selectedWeekRange}</span>
+            <div className="mb-3 flex items-center justify-between rounded-xl border border-blue-100/80 bg-blue-50/65 px-3.5 py-2.5 text-xs text-slate-500">
+              <span>선택 기간</span>
+              <span className="font-bold text-[#0071e3]">{selectedWeekRange}</span>
             </div>
 
             {/* 다음 주차 추천 배지 */}
             {nextAvailableWeek && (
               <button
                 onClick={() => { setSelectedMonth(nextAvailableWeek.month); setSelectedWeek(nextAvailableWeek.week); }}
-                className="text-xs text-blue-600 bg-blue-50 border border-blue-200 px-3 py-1 rounded-full mb-4 hover:bg-blue-100 self-start transition-colors"
+                className="mb-4 self-start rounded-full border border-blue-200/70 bg-white/70 px-3 py-1.5 text-xs font-semibold text-[#0071e3] shadow-sm transition-all hover:bg-white hover:shadow"
               >
                 다음 주차 추천: {nextAvailableWeek.month}월 {nextAvailableWeek.week}주차 ({nextAvailableWeek.range}) →
               </button>
@@ -1950,13 +1990,13 @@ export default function MealAdminView() {
 
             {/* 중복 경고 — 조건부 */}
             {isDuplicateSelected && (
-              <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
+              <div className="mb-4 rounded-xl border border-amber-200/80 bg-amber-50/80 px-3 py-2 text-sm text-amber-700">
                 이미 &apos;{duplicateWeek?.weekTitle}&apos;와 같은 기간({selectedWeekRange})입니다. 다음 주차를 선택해 주세요.
               </div>
             )}
 
             {/* 액션 카드 */}
-            <div className="flex flex-col gap-2 mb-5">
+            <div className="mb-5 grid gap-2.5 sm:grid-cols-2">
               {/* 카드 1: 주차만 변경 */}
               <button
                 disabled={isDuplicateSelected}
@@ -1964,10 +2004,13 @@ export default function MealAdminView() {
                   setSettings(makeSettingsForSelectedWeek(settings));
                   setIsWeekModalOpen(false);
                 }}
-                className="text-left p-4 border-2 border-gray-200 rounded-xl hover:border-blue-400 hover:bg-blue-50 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                className="group rounded-2xl border border-white/90 bg-white/62 p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-200 hover:bg-white hover:shadow-md disabled:cursor-not-allowed disabled:opacity-40"
               >
-                <div className="font-bold text-gray-800 text-sm mb-0.5">📝 주차만 변경</div>
-                <div className="text-xs text-gray-500">현재 식단 내용을 그대로 유지하면서 주차 제목만 바꿉니다.</div>
+                <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-600 transition-colors group-hover:bg-blue-50 group-hover:text-[#0071e3]">
+                  <Edit2 size={17} />
+                </div>
+                <div className="mb-1 text-sm font-bold text-slate-900">주차만 변경</div>
+                <div className="text-xs leading-relaxed text-slate-500">현재 식단은 유지하고 주차와 날짜만 변경합니다.</div>
               </button>
 
               {/* 카드 2: 내용 비우고 새로 만들기 */}
@@ -1978,11 +2021,14 @@ export default function MealAdminView() {
                   setSettings(makeSettingsForSelectedWeek(settings));
                   setIsWeekModalOpen(false);
                 }}
-                className="text-left p-4 border-2 border-gray-200 rounded-xl hover:border-red-400 hover:bg-red-50 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                className="group rounded-2xl border border-white/90 bg-white/62 p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-rose-200 hover:bg-white hover:shadow-md disabled:cursor-not-allowed disabled:opacity-40"
               >
-                <div className="font-bold text-gray-800 text-sm mb-0.5">🗑️ 내용 비우고 새로 만들기</div>
-                <div className="text-xs text-gray-500">현재 캔버스를 초기화하고 빈 식단표로 시작합니다.</div>
-                <div className="text-xs text-red-500 mt-1">저장되지 않은 변경사항이 삭제됩니다.</div>
+                <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-rose-50 text-rose-500">
+                  <Trash2 size={17} />
+                </div>
+                <div className="mb-1 text-sm font-bold text-slate-900">빈 식단표로 시작</div>
+                <div className="text-xs leading-relaxed text-slate-500">현재 내용을 비우고 새 식단표를 직접 작성합니다.</div>
+                <div className="mt-1 text-[11px] font-medium text-rose-500">저장하지 않은 내용은 사라집니다.</div>
               </button>
 
               {/* 카드 3: HWP 파일 가져오기 */}
@@ -1991,12 +2037,13 @@ export default function MealAdminView() {
                   setIsWeekModalOpen(false);
                   setIsHwpImportModalOpen(true);
                 }}
-                className="text-left p-4 border-2 border-blue-100 bg-blue-50 rounded-xl hover:border-blue-400 hover:bg-blue-100 transition-all"
+                className="group rounded-2xl border border-blue-200/70 bg-blue-50/70 p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-300 hover:bg-blue-50 hover:shadow-md"
               >
-                <div className="flex items-center gap-2 font-bold text-blue-700 text-sm mb-0.5">
-                  <FileUp size={17} /> 한글(HWP) 파일로 만들기
+                <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-[#0071e3] text-white shadow-[0_6px_16px_-8px_rgba(0,113,227,0.8)]">
+                  <FileUp size={17} />
                 </div>
-                <div className="text-xs text-blue-600">한글 파일의 날짜와 표 구조를 직접 읽어 식단표를 채웁니다.</div>
+                <div className="mb-1 text-sm font-bold text-slate-900">한글 파일에서 가져오기</div>
+                <div className="text-xs leading-relaxed text-slate-500">HWP/HWPX의 표를 읽어 날짜와 메뉴를 자동으로 채웁니다.</div>
               </button>
 
               {/* 카드 4: AI 스마트 분석 */}
@@ -2008,18 +2055,21 @@ export default function MealAdminView() {
                   setIsWeekModalOpen(false);
                   setIsAIModalOpen(true);
                 }}
-                className="text-left p-4 border-2 border-purple-100 bg-purple-50 rounded-xl hover:border-purple-400 hover:bg-purple-100 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                className="group rounded-2xl border border-indigo-200/60 bg-indigo-50/55 p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-indigo-300 hover:bg-indigo-50 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-40"
               >
-                <div className="font-bold text-purple-700 text-sm mb-0.5">✨ AI 스마트 분석으로 만들기</div>
-                <div className="text-xs text-purple-600">이미지나 텍스트를 AI가 분석해 식단표를 자동으로 채워줍니다.</div>
+                <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-500 text-white shadow-[0_6px_16px_-8px_rgba(99,102,241,0.8)]">
+                  <Sparkles size={17} />
+                </div>
+                <div className="mb-1 text-sm font-bold text-slate-900">AI 스마트 분석</div>
+                <div className="text-xs leading-relaxed text-slate-500">이미지나 붙여넣은 텍스트를 AI로 분석해 채웁니다.</div>
               </button>
 
               {/* 과거 식단 복사 */}
               {history.length > 0 && (
-                <div className="mt-1">
-                  <p className="text-xs text-gray-400 font-medium mb-1">과거 식단 복사해서 시작:</p>
+                <div className="mt-1 sm:col-span-2">
+                  <p className="mb-1.5 text-xs font-semibold text-slate-500">과거 식단 복사해서 시작</p>
                   <select
-                    className="w-full border border-gray-300 rounded-lg p-2 text-sm text-gray-700 focus:ring-2 focus:ring-blue-400 focus:outline-none disabled:opacity-40"
+                    className="w-full rounded-xl border border-white/90 bg-white/70 px-3 py-2.5 text-sm text-slate-700 shadow-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-500/10 disabled:opacity-40"
                     disabled={isDuplicateSelected}
                     defaultValue=""
                     onChange={(e) => {
@@ -2047,13 +2097,13 @@ export default function MealAdminView() {
             </div>
 
             {/* 하단 안내 + 취소 버튼 */}
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-gray-400">
-                💡 변경 후 <b>적용하기</b>를 눌러야 사용자 화면에 반영됩니다.
+            <div className="flex flex-col gap-3 border-t border-slate-200/60 pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs text-slate-400">
+                변경 후 <b className="text-slate-600">저장하기</b>를 눌러야 사용자 화면에 반영됩니다.
               </p>
               <button
                 onClick={() => setIsWeekModalOpen(false)}
-                className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 text-sm font-medium transition-colors"
+                className="rounded-xl border border-white/90 bg-white/65 px-4 py-2 text-sm font-semibold text-slate-600 shadow-sm transition-all hover:bg-white hover:text-slate-900"
               >
                 취소
               </button>
@@ -2064,9 +2114,9 @@ export default function MealAdminView() {
 
       {/* Food Edit/Add Modal */}
       {isFoodModalOpen && editingFood && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
-          <div className="bg-white rounded-xl shadow-xl w-[400px] max-w-[90vw] p-6">
-            <h2 className="font-bold text-xl mb-4 text-gray-800">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-3 backdrop-blur-xl">
+          <div className="w-[420px] max-w-[94vw] rounded-[28px] border border-white/80 bg-white/80 p-6 shadow-[0_30px_90px_-34px_rgba(15,23,42,0.55)] backdrop-blur-2xl">
+            <h2 className="mb-5 text-xl font-bold tracking-[-0.025em] text-slate-950">
               {foodDb.some(f => f.id === editingFood.id) ? '음식 수정' : '음식 추가'}
             </h2>
             
@@ -2074,7 +2124,7 @@ export default function MealAdminView() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">카테고리</label>
                 <select 
-                  className="w-full border border-gray-300 rounded p-2 focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-xl border border-white/90 bg-white/70 px-3 py-2.5 shadow-inner outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-500/10"
                   value={editingFood.category}
                   onChange={(e) => setEditingFood({ ...editingFood, category: e.target.value as Category })}
                 >
@@ -2084,7 +2134,7 @@ export default function MealAdminView() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">음식 이름</label>
                 <textarea
-                  className="w-full min-h-[76px] border border-gray-300 rounded p-2 focus:ring-2 focus:ring-blue-500 resize-y leading-relaxed"
+                  className="min-h-[76px] w-full resize-y rounded-xl border border-white/90 bg-white/70 px-3 py-2.5 leading-relaxed shadow-inner outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-500/10"
                   value={editingFood.name}
                   onChange={(e) => setEditingFood({ ...editingFood, name: e.target.value })}
                   placeholder={`예: 들기름막국수\n무침`}
@@ -2096,7 +2146,7 @@ export default function MealAdminView() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">원산지 정보 (선택)</label>
                 <input 
                   type="text" 
-                  className="w-full border border-gray-300 rounded p-2 focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-xl border border-white/90 bg-white/70 px-3 py-2.5 shadow-inner outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-500/10"
                   value={editingFood.origin || ''}
                   onChange={(e) => setEditingFood({ ...editingFood, origin: e.target.value })}
                   placeholder="예: 돈육: 국내산"
@@ -2119,7 +2169,7 @@ export default function MealAdminView() {
                       }
                     }
                   }}
-                  className="text-red-500 hover:bg-red-50 px-3 py-2 rounded text-sm font-bold"
+                  className="rounded-xl px-3 py-2 text-sm font-semibold text-rose-500 transition hover:bg-rose-50"
                 >
                   삭제
                 </button>
@@ -2127,7 +2177,7 @@ export default function MealAdminView() {
               <div className="flex gap-2">
                 <button 
                   onClick={() => setIsFoodModalOpen(false)} 
-                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 font-medium"
+                  className="rounded-xl border border-white/90 bg-white/65 px-4 py-2 font-semibold text-slate-600 shadow-sm transition hover:bg-white"
                 >
                   취소
                 </button>
@@ -2174,7 +2224,7 @@ export default function MealAdminView() {
                     setSelectedChosung('전체');
                     setSearchQuery('');
                   }} 
-                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-bold"
+                  className="rounded-xl bg-[#0071e3] px-5 py-2 font-semibold text-white shadow-[0_7px_18px_-8px_rgba(0,113,227,0.9)] transition-all hover:bg-[#0077ed]"
                 >
                   저장
                 </button>
@@ -2194,13 +2244,13 @@ export default function MealAdminView() {
 
       {/* AI Smart Import Modal */}
       {isAIModalOpen && (
-        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center">
-          <div className="bg-white rounded-xl shadow-2xl w-[700px] max-w-[95vw] overflow-hidden flex flex-col p-6 max-h-[90vh]">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/25 p-3 backdrop-blur-xl">
+          <div className="flex max-h-[92vh] w-[700px] max-w-[96vw] flex-col overflow-hidden rounded-[30px] border border-white/80 bg-white/82 p-6 shadow-[0_30px_90px_-34px_rgba(15,23,42,0.6)] backdrop-blur-2xl">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="font-bold text-xl flex items-center gap-2">
-                <span className="text-purple-600">✨</span> AI 스마트 식단 분석
+              <h2 className="flex items-center gap-2 text-xl font-bold tracking-[-0.025em] text-slate-950">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-500 text-white shadow-sm"><Sparkles size={17} /></span> AI 스마트 식단 분석
               </h2>
-              <button onClick={() => { setIsAIModalOpen(false); setAiStep('input'); }} className="text-gray-400 hover:text-gray-600">✕</button>
+              <button onClick={() => { setIsAIModalOpen(false); setAiStep('input'); }} className="flex h-9 w-9 items-center justify-center rounded-full bg-white/65 text-slate-400 shadow-sm hover:bg-white hover:text-slate-800"><X size={18} /></button>
             </div>
             
             {aiStep === 'input' ? (
@@ -2208,7 +2258,7 @@ export default function MealAdminView() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-4">
                     <label 
-                      className={`block border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${isAiDragOver ? 'border-purple-500 bg-purple-50' : 'border-gray-300 hover:bg-gray-50'}`}
+                      className={`block cursor-pointer rounded-2xl border border-dashed p-8 text-center transition-all ${isAiDragOver ? 'border-indigo-400 bg-indigo-50/80' : 'border-slate-300/80 bg-white/45 hover:border-indigo-300 hover:bg-white/75'}`}
                       onDragOver={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
@@ -2307,7 +2357,7 @@ export default function MealAdminView() {
                     }
                   }}
                   disabled={isAnalyzing}
-                  className={`w-full py-4 rounded-xl font-bold text-white shadow-lg transition-all ${isAnalyzing ? 'bg-gray-400' : 'bg-purple-600 hover:bg-purple-700'}`}
+                  className={`w-full rounded-xl py-4 font-semibold text-white shadow-[0_10px_24px_-10px_rgba(79,70,229,0.85)] transition-all ${isAnalyzing ? 'bg-slate-400' : 'bg-indigo-500 hover:-translate-y-0.5 hover:bg-indigo-600'}`}
                 >
                   {isAnalyzing ? (
                     <span className="flex items-center justify-center gap-2">
@@ -2403,7 +2453,7 @@ export default function MealAdminView() {
                 <div className="flex gap-2 mt-4">
                   <button 
                     onClick={() => setAiStep('input')}
-                    className="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg font-bold hover:bg-gray-300"
+                    className="rounded-xl border border-white/90 bg-white/65 px-6 py-3 font-semibold text-slate-600 shadow-sm hover:bg-white"
                   >
                     이전으로
                   </button>
@@ -2454,7 +2504,7 @@ export default function MealAdminView() {
                         setIsAnalyzing(false);
                       }
                     }}
-                    className="flex-1 py-3 bg-purple-600 text-white rounded-lg font-bold hover:bg-purple-700 shadow-lg"
+                    className="flex-1 rounded-xl bg-indigo-500 py-3 font-semibold text-white shadow-[0_9px_22px_-10px_rgba(79,70,229,0.9)] transition hover:bg-indigo-600"
                   >
                     데이터베이스 추가 및 식단표 반영
                   </button>
@@ -2469,14 +2519,14 @@ export default function MealAdminView() {
 
       {/* Today's Lunch Upload Modal */}
       {isLunchModalOpen && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
-          <div className="bg-white rounded-xl shadow-xl w-[450px] max-w-[90vw] overflow-hidden flex flex-col">
-            <div className="p-4 border-b flex justify-between items-center bg-orange-500">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-3 backdrop-blur-xl">
+          <div className="flex w-[450px] max-w-[94vw] flex-col overflow-hidden rounded-[28px] border border-white/80 bg-white/82 shadow-[0_30px_90px_-34px_rgba(15,23,42,0.55)] backdrop-blur-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200/60 bg-white/25 p-5">
               <div>
-                <h2 className="font-bold text-lg text-white">점심 사진 업로드</h2>
-                <p className="text-orange-100 text-sm">날짜별로 한 장씩 보관됩니다</p>
+                <h2 className="text-lg font-bold tracking-[-0.02em] text-slate-950">점심 사진 업로드</h2>
+                <p className="mt-0.5 text-sm text-slate-500">날짜별로 한 장씩 보관됩니다</p>
               </div>
-              <button onClick={() => setIsLunchModalOpen(false)} className="text-white hover:text-orange-200 text-xl">✕</button>
+              <button onClick={() => setIsLunchModalOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-full bg-white/65 text-slate-400 shadow-sm hover:bg-white hover:text-slate-800"><X size={18} /></button>
             </div>
 
             <div className="p-6 overflow-y-auto">
@@ -2488,11 +2538,11 @@ export default function MealAdminView() {
                     type="date"
                     value={lunchUploadDate}
                     onChange={(e) => setLunchUploadDate(e.target.value || getTodayDateString())}
-                    className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                    className="flex-1 rounded-xl border border-white/90 bg-white/70 px-3 py-2 text-sm shadow-inner outline-none focus:border-blue-300 focus:ring-4 focus:ring-blue-500/10"
                   />
                   <button
                     onClick={() => setLunchUploadDate(getTodayDateString())}
-                    className="px-3 py-2 text-sm font-bold text-orange-600 border border-orange-300 rounded-lg hover:bg-orange-50 transition-colors"
+                    className="rounded-xl border border-blue-200/80 bg-blue-50/60 px-3 py-2 text-sm font-semibold text-[#0071e3] transition-colors hover:bg-blue-100/70"
                   >
                     오늘
                   </button>
@@ -2513,9 +2563,9 @@ export default function MealAdminView() {
                         title={key}
                         className={`px-2 py-1 rounded-md text-xs font-semibold border transition-colors ${
                           isPicked
-                            ? 'bg-orange-500 text-white border-orange-500'
+                            ? 'bg-[#0071e3] text-white border-[#0071e3] shadow-sm'
                             : has
-                              ? 'bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100'
+                              ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
                               : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100'
                         }`}
                       >
@@ -2547,7 +2597,7 @@ export default function MealAdminView() {
                 )}
               </div>
 
-              <label className="w-full bg-orange-500 text-white py-3 rounded-lg flex items-center justify-center gap-2 cursor-pointer hover:bg-orange-600 transition-colors font-bold">
+              <label className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-[#0071e3] py-3 font-semibold text-white shadow-[0_9px_22px_-10px_rgba(0,113,227,0.9)] transition-all hover:-translate-y-0.5 hover:bg-[#0077ed]">
                 <ImagePlus size={20} />
                 {lunchPhotos[lunchUploadDate] ? '사진 변경하기' : '사진 업로드하기'}
                 <input type="file" className="hidden" accept="image/*" onChange={(e) => {
@@ -2565,10 +2615,10 @@ export default function MealAdminView() {
               )}
             </div>
 
-            <div className="p-4 border-t bg-gray-50 flex justify-end">
+            <div className="flex justify-end border-t border-slate-200/60 bg-white/30 p-4">
               <button 
                 onClick={() => setIsLunchModalOpen(false)} 
-                className="px-6 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 font-bold"
+                className="rounded-xl bg-[#0071e3] px-6 py-2 font-semibold text-white shadow-sm transition hover:bg-[#0077ed]"
               >
                 확인
               </button>
@@ -2579,11 +2629,11 @@ export default function MealAdminView() {
 
       {/* 배추김치 일괄 적용 모달 */}
       {isKimchiModalOpen && pendingKimchiDrop && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
-          <div className="bg-white rounded-xl shadow-2xl w-[420px] max-w-[90vw] overflow-hidden">
-            <div className="bg-gradient-to-r from-green-500 to-green-600 p-5 text-center">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-3 backdrop-blur-xl">
+          <div className="w-[420px] max-w-[94vw] overflow-hidden rounded-[28px] border border-white/80 bg-white/82 shadow-[0_30px_90px_-34px_rgba(15,23,42,0.55)] backdrop-blur-2xl">
+            <div className="border-b border-slate-200/60 bg-white/25 p-5 text-center">
               <div className="text-4xl mb-2">🥬</div>
-              <h2 className="text-xl font-bold text-white">배추김치 일괄 적용</h2>
+              <h2 className="text-xl font-bold tracking-[-0.025em] text-slate-950">배추김치 일괄 적용</h2>
             </div>
             <div className="p-6">
               <p className="text-gray-700 text-center mb-6 leading-relaxed">
@@ -2599,7 +2649,7 @@ export default function MealAdminView() {
                     setIsKimchiModalOpen(false);
                     setPendingKimchiDrop(null);
                   }}
-                  className="flex-1 py-3 bg-gray-200 text-gray-700 rounded-lg font-bold hover:bg-gray-300 transition-colors"
+                  className="flex-1 rounded-xl border border-white/90 bg-white/65 py-3 font-semibold text-slate-600 shadow-sm transition hover:bg-white"
                 >
                   이 칸에만 적용
                 </button>
@@ -2611,7 +2661,7 @@ export default function MealAdminView() {
                     setIsKimchiModalOpen(false);
                     setPendingKimchiDrop(null);
                   }}
-                  className="flex-1 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg font-bold hover:from-green-600 hover:to-green-700 transition-all shadow-md"
+                  className="flex-1 rounded-xl bg-emerald-500 py-3 font-semibold text-white shadow-[0_9px_22px_-10px_rgba(16,185,129,0.9)] transition-all hover:-translate-y-0.5 hover:bg-emerald-600"
                 >
                   ✅ 전체 일괄 적용
                 </button>
@@ -2632,14 +2682,14 @@ export default function MealAdminView() {
 
       {/* History Management Modal */}
       {isHistoryManageModalOpen && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
-          <div className="bg-white rounded-xl shadow-xl w-[500px] max-w-[90vw] flex flex-col" style={{maxHeight: '70vh'}}>
-            <div className="p-4 border-b flex justify-between items-center bg-gray-50 shrink-0">
-              <h2 className="font-bold text-lg flex items-center gap-2">
-                <History size={20} className="text-gray-600" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-3 backdrop-blur-xl">
+          <div className="flex w-[500px] max-w-[94vw] flex-col overflow-hidden rounded-[28px] border border-white/80 bg-white/82 shadow-[0_30px_90px_-34px_rgba(15,23,42,0.55)] backdrop-blur-2xl" style={{maxHeight: '74vh'}}>
+            <div className="flex shrink-0 items-center justify-between border-b border-slate-200/60 bg-white/25 p-5">
+              <h2 className="flex items-center gap-2 text-lg font-bold tracking-[-0.02em] text-slate-950">
+                <History size={20} className="text-[#0071e3]" />
                 저장된 식단 기록 관리
               </h2>
-              <button onClick={() => setIsHistoryManageModalOpen(false)} className="text-gray-500 hover:text-gray-800">✕</button>
+              <button onClick={() => setIsHistoryManageModalOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-full bg-white/65 text-slate-400 shadow-sm hover:bg-white hover:text-slate-800"><X size={18} /></button>
             </div>
 
             <div className="p-4 overflow-y-auto flex-1 min-h-0">
@@ -2681,10 +2731,10 @@ export default function MealAdminView() {
               )}
             </div>
             
-            <div className="p-4 border-t bg-gray-50 text-center shrink-0">
+            <div className="shrink-0 border-t border-slate-200/60 bg-white/30 p-4 text-center">
               <button
                 onClick={() => setIsHistoryManageModalOpen(false)}
-                className="w-full py-2 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 transition-colors"
+                className="w-full rounded-xl border border-white/90 bg-white/65 py-2 font-semibold text-slate-600 shadow-sm transition hover:bg-white hover:text-slate-900"
               >
                 닫기
               </button>
@@ -2738,7 +2788,7 @@ function SortableHistoryItem({ h, onUpdate, onDelete }: { h: HistoryEntry, onUpd
     <div 
       ref={setNodeRef} 
       style={style}
-      className="flex items-center justify-between p-3 border rounded-lg bg-white hover:bg-gray-50 transition-colors group"
+      className="group flex items-center justify-between rounded-2xl border border-white/90 bg-white/60 p-3 shadow-sm transition-all hover:-translate-y-0.5 hover:bg-white hover:shadow-md"
     >
       <div className="flex items-center gap-3 flex-1">
         <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing p-1 text-gray-400 hover:text-gray-600">
@@ -2752,13 +2802,13 @@ function SortableHistoryItem({ h, onUpdate, onDelete }: { h: HistoryEntry, onUpd
       <div className="flex gap-2">
         <button 
           onClick={() => onUpdate(h)}
-          className="px-3 py-1 bg-blue-50 text-blue-600 rounded text-xs font-bold hover:bg-blue-100"
+          className="rounded-lg bg-blue-50 px-3 py-1 text-xs font-bold text-[#0071e3] transition hover:bg-blue-100"
         >
           불러오기
         </button>
         <button 
           onClick={() => onDelete(h.id)}
-          className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded"
+          className="rounded-lg p-1 text-rose-400 transition hover:bg-rose-50 hover:text-rose-600"
           title="삭제"
         >
           <Trash2 size={18} />

@@ -23,19 +23,19 @@ export function DraggableFoodItem({ food, isFavorite, onToggleFavorite, onEdit, 
       ref={setNodeRef} 
       {...listeners} 
       {...attributes}
-      className={`flex items-center gap-2 p-3 bg-white border border-gray-200 rounded shadow-sm cursor-grab hover:border-blue-400 hover:shadow transition-all group ${isDragging ? 'opacity-50' : 'opacity-100'}`}
+      className={`group flex cursor-grab items-center gap-2 rounded-2xl border border-white/90 bg-white/62 p-3 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-200 hover:bg-white/90 hover:shadow-md ${isDragging ? 'opacity-50' : 'opacity-100'}`}
     >
-      <GripVertical size={16} className="text-gray-400 flex-shrink-0" />
+      <GripVertical size={16} className="flex-shrink-0 text-slate-300" />
       <div className="flex-1 overflow-hidden">
-        <div className="font-semibold text-sm text-gray-800 truncate">{food.name}</div>
-        {food.origin && <div className="text-xs text-gray-500 truncate">{food.origin}</div>}
+        <div className="truncate text-sm font-semibold text-slate-800">{food.name}</div>
+        {food.origin && <div className="truncate text-xs text-slate-400">{food.origin}</div>}
       </div>
       <div className={`flex items-center transition-opacity ${isFavorite ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
         {onToggleFavorite && (
           <button 
             onClick={() => onToggleFavorite(food)}
             onPointerDown={(e) => e.stopPropagation()}
-            className={`p-1.5 rounded ${isFavorite ? 'text-yellow-400 hover:text-yellow-500' : 'text-gray-300 hover:text-yellow-400'}`}
+            className={`rounded-lg p-1.5 transition-colors ${isFavorite ? 'text-amber-400 hover:bg-amber-50 hover:text-amber-500' : 'text-slate-300 hover:bg-amber-50 hover:text-amber-400'}`}
             title={isFavorite ? "즐겨찾기 해제" : "즐겨찾기 추가"}
           >
             <Star size={14} fill={isFavorite ? 'currentColor' : 'none'} />
@@ -46,7 +46,7 @@ export function DraggableFoodItem({ food, isFavorite, onToggleFavorite, onEdit, 
             <button 
               onClick={() => onEdit(food)}
               onPointerDown={(e) => e.stopPropagation()}
-              className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
+              className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-blue-50 hover:text-[#0071e3]"
               title="수정"
             >
               <Edit2 size={14} />
@@ -56,7 +56,7 @@ export function DraggableFoodItem({ food, isFavorite, onToggleFavorite, onEdit, 
             <button 
               onClick={() => onDelete(food)}
               onPointerDown={(e) => e.stopPropagation()}
-              className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
+              className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600"
               title="삭제"
             >
               <Trash2 size={14} />

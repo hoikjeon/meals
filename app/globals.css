@@ -22,3 +22,19 @@ body {
   background: var(--background);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+.admin-apple-shell {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.admin-apple-shell button,
+.admin-apple-shell input,
+.admin-apple-shell select,
+.admin-apple-shell textarea {
+  font: inherit;
+}
+
+.admin-apple-shell ::selection {
+  background: rgba(0, 113, 227, 0.18);
+}

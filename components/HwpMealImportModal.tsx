@@ -81,16 +81,18 @@ export default function HwpMealImportModal({
 
   return (
     <div
-      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/55 p-3 md:p-6"
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/25 p-3 backdrop-blur-xl md:p-6"
       role="dialog"
       aria-modal="true"
       aria-labelledby="hwp-import-title"
     >
-      <div className="flex max-h-[94vh] w-full max-w-[1180px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-gray-200 bg-slate-50 px-5 py-4">
+      <div className="flex max-h-[94vh] w-full max-w-[1180px] flex-col overflow-hidden rounded-[30px] border border-white/80 bg-white/82 shadow-[0_30px_90px_-34px_rgba(15,23,42,0.6)] backdrop-blur-2xl">
+        <div className="flex items-center justify-between border-b border-slate-200/60 bg-white/30 px-5 py-4 md:px-6">
           <div>
             <h2 id="hwp-import-title" className="flex items-center gap-2 text-lg font-extrabold text-slate-800 md:text-xl">
-              <FileUp className="text-blue-600" size={22} />
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#0071e3] text-white shadow-[0_7px_18px_-8px_rgba(0,113,227,0.9)]">
+                <FileUp size={18} />
+              </span>
               한글 식단표 가져오기
             </h2>
             <p className="mt-1 text-xs text-slate-500 md:text-sm">파일은 브라우저 안에서 분석되며 외부 AI로 전송되지 않습니다.</p>
@@ -99,7 +101,7 @@ export default function HwpMealImportModal({
             type="button"
             onClick={onClose}
             disabled={isBusy}
-            className="rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-white/90 bg-white/65 text-slate-400 shadow-sm transition-all hover:bg-white hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
             aria-label="닫기"
           >
             <X size={20} />
@@ -128,19 +130,21 @@ export default function HwpMealImportModal({
                 disabled={isParsing}
                 className={`flex min-h-72 w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-12 text-center transition-all ${
                   isDragOver
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-slate-300 bg-slate-50 hover:border-blue-400 hover:bg-blue-50/60'
+                    ? 'border-blue-400 bg-blue-50/85 shadow-[0_16px_40px_-28px_rgba(0,113,227,0.9)]'
+                    : 'border-slate-300/80 bg-white/48 hover:border-blue-300 hover:bg-white/78 hover:shadow-[0_18px_45px_-32px_rgba(15,23,42,0.5)]'
                 } disabled:cursor-wait`}
               >
                 {isParsing ? (
                   <>
-                    <LoaderCircle className="mb-4 animate-spin text-blue-600" size={46} />
+                    <LoaderCircle className="mb-4 animate-spin text-[#0071e3]" size={46} />
                     <span className="text-lg font-bold text-slate-800">한글 파일을 분석하고 있습니다</span>
                     <span className="mt-2 text-sm text-slate-500">표의 행·열과 메뉴를 확인하는 중입니다.</span>
                   </>
                 ) : (
                   <>
-                    <UploadCloud className="mb-4 text-blue-600" size={52} />
+                    <span className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-[#0071e3] shadow-sm ring-1 ring-blue-100">
+                      <UploadCloud size={30} />
+                    </span>
                     <span className="text-lg font-bold text-slate-800">HWP 파일을 여기에 놓아주세요</span>
                     <span className="mt-2 text-sm text-slate-500">또는 클릭해서 파일 선택 · HWP/HWPX · 최대 20MB</span>
                   </>
@@ -157,7 +161,7 @@ export default function HwpMealImportModal({
           )}
 
           {error && (
-            <div className="mx-auto mt-4 flex max-w-2xl items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <div className="mx-auto mt-4 flex max-w-2xl items-start gap-3 rounded-2xl border border-rose-200/80 bg-rose-50/80 px-4 py-3 text-sm text-rose-700">
               <AlertTriangle className="mt-0.5 shrink-0" size={18} />
               <div>
                 <p className="font-bold">파일을 불러오지 못했습니다.</p>
@@ -168,7 +172,7 @@ export default function HwpMealImportModal({
 
           {plan && (
             <div className="space-y-4">
-              <div className="flex flex-col gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 md:flex-row md:items-center md:justify-between">
+              <div className="flex flex-col gap-3 rounded-2xl border border-emerald-200/70 bg-emerald-50/70 px-4 py-3 md:flex-row md:items-center md:justify-between">
                 <div className="flex min-w-0 items-center gap-3">
                   <CheckCircle2 className="shrink-0 text-emerald-600" size={24} />
                   <div className="min-w-0">
@@ -177,9 +181,9 @@ export default function HwpMealImportModal({
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2 text-xs font-semibold">
-                  <span className="rounded-full bg-white px-3 py-1.5 text-slate-700 shadow-sm">{plan.tableSize.rows}행 × {plan.tableSize.columns}열</span>
-                  <span className="rounded-full bg-white px-3 py-1.5 text-slate-700 shadow-sm">메뉴 {plan.itemCount}개</span>
-                  <span className="rounded-full bg-white px-3 py-1.5 text-slate-700 shadow-sm">시작일 {plan.weekStart}</span>
+                  <span className="rounded-full border border-white/90 bg-white/70 px-3 py-1.5 text-slate-700 shadow-sm">{plan.tableSize.rows}행 × {plan.tableSize.columns}열</span>
+                  <span className="rounded-full border border-white/90 bg-white/70 px-3 py-1.5 text-slate-700 shadow-sm">메뉴 {plan.itemCount}개</span>
+                  <span className="rounded-full border border-white/90 bg-white/70 px-3 py-1.5 text-slate-700 shadow-sm">시작일 {plan.weekStart}</span>
                 </div>
               </div>
 
@@ -194,7 +198,7 @@ export default function HwpMealImportModal({
                 </div>
               )}
 
-              <div className="overflow-x-auto rounded-xl border border-slate-300">
+              <div className="overflow-x-auto rounded-2xl border border-slate-200/80 bg-white/60 shadow-sm">
                 <table className="w-full min-w-[1000px] table-fixed border-collapse bg-white text-xs">
                   <thead>
                     <tr className="bg-slate-100">
@@ -241,12 +245,12 @@ export default function HwpMealImportModal({
           )}
         </div>
 
-        <div className="flex flex-col-reverse gap-2 border-t border-gray-200 bg-white px-4 py-4 sm:flex-row sm:justify-end md:px-6">
+        <div className="flex flex-col-reverse gap-2 border-t border-slate-200/60 bg-white/35 px-4 py-4 sm:flex-row sm:justify-end md:px-6">
           <button
             type="button"
             onClick={onClose}
             disabled={isBusy}
-            className="rounded-lg bg-slate-200 px-5 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-300 disabled:opacity-40"
+            className="rounded-xl border border-white/90 bg-white/65 px-5 py-2.5 text-sm font-semibold text-slate-600 shadow-sm transition-all hover:bg-white hover:text-slate-900 disabled:opacity-40"
           >
             취소
           </button>
@@ -260,7 +264,7 @@ export default function HwpMealImportModal({
                   window.setTimeout(() => inputRef.current?.click(), 0);
                 }}
                 disabled={isBusy}
-                className="flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+                className="flex items-center justify-center gap-2 rounded-xl border border-white/90 bg-white/65 px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition-all hover:bg-white hover:shadow disabled:opacity-40"
               >
                 <FileText size={16} /> 다른 파일 선택
               </button>
@@ -268,7 +272,7 @@ export default function HwpMealImportModal({
                 type="button"
                 onClick={() => void handleApply()}
                 disabled={isBusy}
-                className="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-blue-700 disabled:cursor-wait disabled:bg-slate-400"
+                className="flex items-center justify-center gap-2 rounded-xl bg-[#0071e3] px-6 py-2.5 text-sm font-semibold text-white shadow-[0_8px_20px_-8px_rgba(0,113,227,0.9)] transition-all hover:-translate-y-0.5 hover:bg-[#0077ed] disabled:cursor-wait disabled:bg-slate-400"
               >
                 {isApplying ? <LoaderCircle className="animate-spin" size={17} /> : <CheckCircle2 size={17} />}
                 {isApplying ? '식단표에 반영 중...' : '이 식단표 반영하기'}
