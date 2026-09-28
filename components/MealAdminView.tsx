@@ -19,7 +19,7 @@ import {
   parseLocalDate
 } from '@/lib/dateUtils';
 import { dummySettings, dummyTodayLunch } from '@/lib/dummyData';
-import { FoodItem, MealEntry, DayOfWeek, MealTime, Category, HistoryEntry, Settings, TodayLunch } from '@/lib/types';
+import { FoodItem, MealEntry, MealFood, DayOfWeek, MealTime, Category, HistoryEntry, Settings, TodayLunch } from '@/lib/types';
 import { DroppableCell } from './DroppableCell';
 import { DraggableFoodItem } from './DraggableFoodItem';
 import { ImagePlus, Download, Save, ArrowLeft, Trash2, Plus, ChevronLeft, ChevronRight, Camera, Eye, EyeOff, List, History, Edit2, FileUp, Sparkles, X } from 'lucide-react';
@@ -28,9 +28,10 @@ import { supabase } from '@/lib/supabase';
 import { uploadImageToStorage } from '@/lib/imageStorage';
 import { fetchLunchPhotos, saveLunchPhoto, deleteLunchPhoto, LunchPhotoMap } from '@/lib/lunchPhotos';
 import { fetchAllFoodItems } from '@/lib/foodItems';
+import { getMealFoods, materializeMenus, withLegacyFoodIds, getMealFoodIdentity } from '@/lib/mealFoods';
 import ImageCropModal from './ImageCropModal';
 import HwpMealImportModal from './HwpMealImportModal';
-import type { HwpMealPlan, ImportedMealFood } from '@/lib/hwpMealParser';
+import type { HwpMealPlan } from '@/lib/hwpMealParser';
 
 
 const TIMES: MealTime[] = ['아침', '점심', '저녁'];
@@ -70,25 +71,14 @@ const renderMenuName = (name: string) => {
   });
 };
 
-const getFoodsForMeal = (
-  menus: MealEntry[],
-  foodDb: FoodItem[],
-  day: DayOfWeek,
-  time: MealTime
-) => {
-  const menuEntry = menus.find(m => m.day === day && m.time === time);
-  return menuEntry
-    ? menuEntry.foodIds
-        .map(id => foodDb.find(f => f.id === id))
-        .filter((food): food is FoodItem => Boolean(food))
-    : [];
-};
+/** 칸 안의 음식 목록. foods가 있으면 그대로, 과거 기록만 음식 DB에서 찾아 만든다. */
+const getFoodsForMeal = getMealFoods;
 
 const getMenuNameLineCount = (name: string) => (
   name.split(/\r?\n/).reduce((total, line) => total + splitMenuLine(line).length, 0)
 );
 
-const getMenuSlotWeight = (food?: FoodItem) => {
+const getMenuSlotWeight = (food?: MealFood) => {
   if (!food) return 1;
   return Math.max(2, getMenuNameLineCount(food.name) + 1);
 };
@@ -272,18 +262,10 @@ const normalizeAiFood = (food: AiFoodCandidate, foodDb: FoodItem[]): ReviewFood 
 
 const normalizeFoodValue = (value?: string) => (value || '').replace(/\s+/g, ' ').trim();
 
-const getFoodIdentity = (food: Pick<FoodItem, 'name' | 'origin'> | ImportedMealFood) => (
-  `${normalizeFoodValue(food.name)}\u0000${normalizeFoodValue(food.origin)}`
+/** 음식 DB 항목을 메뉴 칸에 담는 형태로 바꾼다. */
+const toMealFood = (food?: FoodItem): MealFood | undefined => (
+  food ? { name: food.name, origin: food.origin || undefined } : undefined
 );
-
-const inferFoodCategory = (name: string): Category => {
-  const cleanName = normalizeFoodValue(name).replace(/^환자\s*:\s*/, '');
-
-  if (/(?:밥|라이스|죽|누룽지)$/.test(cleanName)) return '밥';
-  if (/(?:국|탕|찌개|전골|스프|수프)$/.test(cleanName)) return '국';
-  if (/(?:김치|무침|볶음|조림|전|튀김|찜|구이|나물|샐러드|잡채|장아찌|겉절이|불고기|생채)$/.test(cleanName)) return '반찬';
-  return '기타';
-};
 
 const getChosungGroup = (char: string) => {
   const mapping = ['ㄱ', 'ㄱ', 'ㄴ', 'ㄷ', 'ㄷ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅂ', 'ㅅ', 'ㅅ', 'ㅇ', 'ㅈ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'];
@@ -302,22 +284,20 @@ const PRESET_BACKGROUNDS = [
 const buildWeekTitle = (month: number, week: number) => `${month}월 ${week}주차 식단표`;
 
 /**
- * 격자 항목 id 파싱: `grid-[mobile-]{요일}-{끼니}-{음식UUID}-{표시순번}`
- * 음식 id가 UUID라 하이픈이 들어 있으므로 앞뒤를 잘라내고 가운데를 다시 이어붙인다.
+ * 격자 항목 id 파싱: `grid-[mobile-]{요일}-{끼니}-{칸 안 순번}`
+ * 순번이 곧 데이터 순번이므로 화면 순서와 데이터 순서가 어긋날 일이 없다.
  */
 const parseGridItemId = (id: string) => {
   const isMobile = id.startsWith('grid-mobile-');
   if (!isMobile && !id.startsWith('grid-')) return null;
 
   const parts = id.slice((isMobile ? 'grid-mobile-' : 'grid-').length).split('-');
-  if (parts.length < 4) return null;
+  if (parts.length !== 3) return null;
 
-  return {
-    day: parts[0] as DayOfWeek,
-    time: parts[1] as MealTime,
-    foodId: parts.slice(2, -1).join('-'),
-    idx: parseInt(parts[parts.length - 1])
-  };
+  const idx = Number(parts[2]);
+  if (!Number.isInteger(idx)) return null;
+
+  return { day: parts[0] as DayOfWeek, time: parts[1] as MealTime, idx };
 };
 
 /**
@@ -390,6 +370,10 @@ export default function MealAdminView() {
   const [isWeekModalOpen, setIsWeekModalOpen] = useState(false);
   const [isFoodModalOpen, setIsFoodModalOpen] = useState(false);
   const [editingFood, setEditingFood] = useState<FoodItem | null>(null);
+  // 식단표 칸 안의 음식을 직접 고치는 상태 (음식 DB와 무관하게 그 주 메뉴만 바뀐다)
+  const [editingCell, setEditingCell] = useState<
+    { day: DayOfWeek; time: MealTime; idx: number; name: string; origin: string } | null
+  >(null);
   const { month: initMonth, week: initWeek } = getCurrentWeekOfMonth();
   const [selectedMonth, setSelectedMonth] = useState(initMonth);
   const [selectedWeek, setSelectedWeek] = useState(initWeek);
@@ -417,7 +401,7 @@ export default function MealAdminView() {
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [aiInputText, setAiInputText] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [pendingKimchiDrop, setPendingKimchiDrop] = useState<{foodId: string; day: DayOfWeek; time: MealTime} | null>(null);
+  const [pendingKimchiDrop, setPendingKimchiDrop] = useState<{food: MealFood; day: DayOfWeek; time: MealTime} | null>(null);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [lastSavedData, setLastSavedData] = useState<string>('');
   const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
@@ -492,14 +476,16 @@ export default function MealAdminView() {
       }
 
       if (entryToLoad) {
-        if (entryToLoad.menus) setMenus(entryToLoad.menus);
+        // 편집 화면은 foods 형태만 다루므로 불러온 즉시 변환한다.
+        const loadedMenus = entryToLoad.menus ? materializeMenus(entryToLoad.menus, foodData) : null;
+        if (loadedMenus) setMenus(loadedMenus);
         if (entryToLoad.settings) setSettings(entryToLoad.settings);
         if (entryToLoad.today_lunch) setTodayLunch(entryToLoad.today_lunch);
         else if (entryToLoad.todayLunch) setTodayLunch(entryToLoad.todayLunch);
 
         // 초기 저장 상태 기록
         const initialData = {
-          menus: entryToLoad.menus,
+          menus: loadedMenus,
           settings: entryToLoad.settings,
           todayLunch: entryToLoad.today_lunch || entryToLoad.todayLunch
         };
@@ -673,13 +659,15 @@ export default function MealAdminView() {
     if (!isLoaded) return; // 데이터 로드 전엔 저장 금지 (stale closure 방어)
     const settingsForSave = normalizeSettingsWeekStart(settings);
     const weekStartForSave = settingsForSave.weekStart;
+    // 저장 형식: foods가 기준이고 foodIds는 구형 번들이 읽을 수 있게 채우는 보조 값이다.
+    const menusForSave = withLegacyFoodIds(menus, foodDb);
 
     // 1. 현재 상태 업데이트 (upsert)
     const { error: stateError } = await supabase
       .from('current_meal_state')
       .upsert({
         id: 1,
-        menus,
+        menus: menusForSave,
         settings: settingsForSave,
         today_lunch: todayLunch,
         updated_at: new Date().toISOString()
@@ -699,12 +687,12 @@ export default function MealAdminView() {
     if (existing) {
       ({ error: historyError } = await supabase
         .from('meal_history')
-        .update({ week_title: settingsForSave.weekTitle, menus, settings: settingsForSave, today_lunch: todayLunch })
+        .update({ week_title: settingsForSave.weekTitle, menus: menusForSave, settings: settingsForSave, today_lunch: todayLunch })
         .eq('id', existing.id));
     } else {
       ({ error: historyError } = await supabase
         .from('meal_history')
-        .insert({ week_title: settingsForSave.weekTitle, menus, settings: settingsForSave, today_lunch: todayLunch }));
+        .insert({ week_title: settingsForSave.weekTitle, menus: menusForSave, settings: settingsForSave, today_lunch: todayLunch }));
     }
 
     // 주차 기록 저장이 실패하면 관리자가 다시 들어왔을 때 이전 내용이 보이므로 반드시 알린다.
@@ -799,11 +787,12 @@ export default function MealAdminView() {
         favoriteFoodIds: settings.favoriteFoodIds,
         historyOrder: settings.historyOrder,
       }, selected.weekTitle);
-      setMenus(selected.menus);
+      const loadedMenus = materializeMenus(selected.menus, foodDb);
+      setMenus(loadedMenus);
       setSettings(selectedSettings);
       if (selected.todayLunch) setTodayLunch(selected.todayLunch);
       setLastSavedData(JSON.stringify({
-        menus: selected.menus,
+        menus: loadedMenus,
         settings: selectedSettings,
         todayLunch: selected.todayLunch
       }));
@@ -816,7 +805,7 @@ export default function MealAdminView() {
 
   const handleHwpImport = async (plan: HwpMealPlan): Promise<boolean> => {
     const notices: string[] = [];
-    if (menus.some((menu) => menu.foodIds.length > 0)) {
+    if (menus.some((menu) => (menu.foods ?? []).length > 0)) {
       notices.push('현재 편집 중인 식단 내용이 HWP 파일의 내용으로 교체됩니다.');
     }
 
@@ -829,69 +818,20 @@ export default function MealAdminView() {
       return false;
     }
 
-    const foodByIdentity = new Map(foodDb.map((food) => [getFoodIdentity(food), food]));
-    const categoryByName = new Map(
-      foodDb.map((food) => [normalizeFoodValue(food.name), food.category]),
-    );
-    const newFoodMap = new Map<string, Pick<FoodItem, 'name' | 'category' | 'origin'>>();
-
-    plan.menus.forEach((menu) => {
-      menu.foods.forEach((food) => {
-        const identity = getFoodIdentity(food);
-        if (foodByIdentity.has(identity) || newFoodMap.has(identity)) return;
-
-        const name = normalizeFoodValue(food.name);
-        const origin = normalizeFoodValue(food.origin);
-        newFoodMap.set(identity, {
-          name,
-          category: categoryByName.get(name) || inferFoodCategory(name),
-          origin: origin || undefined,
-        });
-      });
-    });
-
-    let finalFoodDb = [...foodDb];
-    const foodsToInsert = Array.from(newFoodMap.values()).map((food) => ({
-      name: food.name,
-      category: food.category,
-      origin: food.origin || '',
+    // 메뉴 이름을 그대로 담는다. 음식 DB에 새 행을 만들지 않으므로 DB가 불어나지 않고,
+    // 이름과 원산지는 식단표 칸에서 바로 고칠 수 있다.
+    const importedMenus: MealEntry[] = plan.menus.map((menu, index) => ({
+      id: `hwp-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`,
+      day: menu.day,
+      time: menu.time,
+      foodIds: [],
+      foods: menu.foods.map((food) => ({
+        name: normalizeFoodValue(food.name),
+        origin: normalizeFoodValue(food.origin) || undefined,
+      })),
     }));
 
-    if (foodsToInsert.length > 0) {
-      const { data, error } = await supabase
-        .from('food_items')
-        .insert(foodsToInsert)
-        .select();
-
-      if (error) throw new Error(`새 음식 DB 추가 실패: ${error.message}`);
-      if (!data || data.length !== foodsToInsert.length) {
-        throw new Error('새 음식이 모두 저장되지 않아 식단표 반영을 중단했습니다.');
-      }
-      finalFoodDb = [...finalFoodDb, ...(data as FoodItem[])];
-    }
-
-    const finalFoodByIdentity = new Map(
-      finalFoodDb.map((food) => [getFoodIdentity(food), food]),
-    );
-    const importedMenus: MealEntry[] = plan.menus.map((menu, index) => {
-      const foodIds = menu.foods.map((food) => {
-        const matchedFood = finalFoodByIdentity.get(getFoodIdentity(food));
-        if (!matchedFood) {
-          throw new Error(`'${food.name}' 메뉴를 음식 DB와 연결하지 못했습니다.`);
-        }
-        return matchedFood.id;
-      });
-
-      return {
-        id: `hwp-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`,
-        day: menu.day,
-        time: menu.time,
-        foodIds,
-      };
-    });
-
     const { month, week } = getWeekMetaFromStart(plan.weekStart);
-    setFoodDb(finalFoodDb);
     setMenus(importedMenus);
     setSettings((previous) => ({
       ...previous,
@@ -903,8 +843,8 @@ export default function MealAdminView() {
     setSelectedWeek(week);
 
     alert(
-      `HWP 식단표를 반영했습니다.\n` +
-      `메뉴 ${plan.itemCount}개 · 새 음식 ${foodsToInsert.length}개\n\n` +
+      `HWP 식단표를 반영했습니다. (메뉴 ${plan.itemCount}개)\n\n` +
+      `이름이나 원산지는 식단표 칸의 연필 버튼으로 바로 고칠 수 있습니다.\n` +
       `내용을 확인한 뒤 상단의 '저장하기'를 눌러주세요.`,
     );
     return true;
@@ -915,21 +855,23 @@ export default function MealAdminView() {
   };
 
   // 배추김치 일괄 적용 처리
-  const applyKimchiToAll = (foodId: string) => {
+  const applyKimchiToAll = (food: MealFood) => {
     setMenus((prev) => {
       const newMenus = [...prev];
       const ALL_DAYS: DayOfWeek[] = ['월', '화', '수', '목', '금', '토', '일'];
       const ALL_TIMES: MealTime[] = ['아침', '점심', '저녁'];
+      const identity = getMealFoodIdentity(food);
 
       ALL_DAYS.forEach(d => {
         ALL_TIMES.forEach(t => {
           const idx = newMenus.findIndex(m => m.day === d && m.time === t);
           if (idx >= 0) {
-            if (!newMenus[idx].foodIds.includes(foodId)) {
-              newMenus[idx] = { ...newMenus[idx], foodIds: [...newMenus[idx].foodIds, foodId] };
+            const foods = newMenus[idx].foods ?? [];
+            if (!foods.some(f => getMealFoodIdentity(f) === identity)) {
+              newMenus[idx] = { ...newMenus[idx], foods: [...foods, food] };
             }
           } else {
-            newMenus.push({ id: Date.now().toString() + d + t, day: d, time: t, foodIds: [foodId] });
+            newMenus.push({ id: Date.now().toString() + d + t, day: d, time: t, foodIds: [], foods: [food] });
           }
         });
       });
@@ -938,112 +880,105 @@ export default function MealAdminView() {
   };
 
   /** insertAt을 주면 그 자리에 끼워 넣고, 없으면 기존처럼 맨 뒤(배추김치 앞)에 붙인다. */
-  const addFoodToCell = (foodId: string, day: DayOfWeek, time: MealTime, insertAt?: number) => {
+  const addFoodToCell = (food: MealFood, day: DayOfWeek, time: MealTime, insertAt?: number) => {
     setMenus((prev) => {
       const existingEntryIndex = prev.findIndex(m => m.day === day && m.time === time);
-      if (existingEntryIndex >= 0) {
-        const newMenus = [...prev];
-        const currentFoods = [...newMenus[existingEntryIndex].foodIds];
-        if (!currentFoods.includes(foodId)) {
-          const food = foodDb.find(f => f.id === foodId);
-          const kimchiIdx = currentFoods.findIndex(id => foodDb.find(f => f.id === id)?.name === '배추김치');
-
-          if (food?.name === '배추김치') {
-            currentFoods.push(foodId); // 배추김치는 항상 맨 뒤
-          } else if (typeof insertAt === 'number' && insertAt >= 0) {
-            // 놓은 자리에 삽입하되, 배추김치보다 뒤로는 가지 않게 한다
-            const limit = kimchiIdx >= 0 ? kimchiIdx : currentFoods.length;
-            currentFoods.splice(Math.min(insertAt, limit), 0, foodId);
-          } else if (kimchiIdx >= 0) {
-            currentFoods.splice(kimchiIdx, 0, foodId);
-          } else {
-            currentFoods.push(foodId);
-          }
-
-          newMenus[existingEntryIndex] = {
-            ...newMenus[existingEntryIndex],
-            foodIds: currentFoods
-          };
-        }
-        return newMenus;
-      } else {
-        return [...prev, { id: `${Date.now()}-${day}-${time}`, day, time, foodIds: [foodId] }];
+      if (existingEntryIndex < 0) {
+        return [...prev, { id: `${Date.now()}-${day}-${time}`, day, time, foodIds: [], foods: [food] }];
       }
+
+      const currentFoods = [...(prev[existingEntryIndex].foods ?? [])];
+      const identity = getMealFoodIdentity(food);
+      if (currentFoods.some(f => getMealFoodIdentity(f) === identity)) return prev;
+
+      const kimchiIdx = currentFoods.findIndex(f => f.name === '배추김치');
+      if (food.name === '배추김치') {
+        currentFoods.push(food); // 배추김치는 항상 맨 뒤
+      } else if (typeof insertAt === 'number' && insertAt >= 0) {
+        // 놓은 자리에 삽입하되, 배추김치보다 뒤로는 가지 않게 한다
+        const limit = kimchiIdx >= 0 ? kimchiIdx : currentFoods.length;
+        currentFoods.splice(Math.min(insertAt, limit), 0, food);
+      } else if (kimchiIdx >= 0) {
+        currentFoods.splice(kimchiIdx, 0, food);
+      } else {
+        currentFoods.push(food);
+      }
+
+      const newMenus = [...prev];
+      newMenus[existingEntryIndex] = { ...newMenus[existingEntryIndex], foods: currentFoods };
+      return newMenus;
     });
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveId(null);
+    if (!over) return;
 
-    if (over) {
-      const isFromGrid = active.data.current?.source === 'grid';
-      const foodId = isFromGrid ? active.data.current?.foodId : (active.id as string);
-      const food = foodDb.find(f => f.id === foodId);
+    const isFromGrid = active.data.current?.source === 'grid';
+    const draggedFood: MealFood | undefined = isFromGrid
+      ? (active.data.current?.food as MealFood | undefined)
+      : toMealFood(foodDb.find(f => f.id === active.id));
+    if (!draggedFood) return;
 
-      const overId = over.id as string;
-      const overItem = parseGridItemId(overId); // 개별 항목 위에 놓았으면 값이 있다
+    const overId = over.id as string;
+    const overItem = parseGridItemId(overId); // 개별 항목 위에 놓았으면 값이 있다
 
-      let targetDay: DayOfWeek;
-      let targetTime: MealTime;
-      if (overItem) {
-        targetDay = overItem.day;
-        targetTime = overItem.time;
-      } else {
-        // `mobile-{요일}-{끼니}` 또는 `desktop-{요일}-{끼니}`
-        const overParts = overId.split('-');
-        targetDay = overParts[1] as DayOfWeek;
-        targetTime = overParts[2] as MealTime;
-      }
-
-      // 놓을 위치는 화면 표시 순번이 아니라 실제 foodIds 기준으로 구한다.
-      // (foodDb에 없는 id가 섞이면 표시 순번과 데이터 순번이 어긋나기 때문)
-      const targetEntry = menus.find(m => m.day === targetDay && m.time === targetTime);
-      const dropIndex = overItem && targetEntry
-        ? targetEntry.foodIds.indexOf(overItem.foodId)
-        : -1;
-
-      // 그리드 내에서 이동하는 경우
-      if (isFromGrid) {
-        const sourceDay = active.data.current?.day as DayOfWeek;
-        const sourceTime = active.data.current?.time as MealTime;
-
-        // 같은 칸 안에서 드롭한 경우 (정렬)
-        if (sourceDay === targetDay && sourceTime === targetTime) {
-          setMenus(prev => {
-            const entryIdx = prev.findIndex(m => m.day === sourceDay && m.time === sourceTime);
-            if (entryIdx === -1) return prev;
-            const ids = prev[entryIdx].foodIds;
-            const from = ids.indexOf(foodId);
-            if (from === -1) return prev;
-            // 항목이 없는 빈 영역에 놓으면 맨 뒤로 보낸다
-            const to = dropIndex >= 0 ? dropIndex : ids.length - 1;
-            if (from === to) return prev;
-            const newMenus = [...prev];
-            newMenus[entryIdx] = { ...newMenus[entryIdx], foodIds: arrayMove(ids, from, to) };
-            return newMenus;
-          });
-          return;
-        }
-
-        // 다른 칸으로 이동 — 놓은 자리에 삽입
-        removeFood(sourceDay, sourceTime, foodId);
-        addFoodToCell(foodId, targetDay, targetTime, dropIndex >= 0 ? dropIndex : undefined);
-        return;
-      }
-
-      // 배추김치 특별 처리 - 커스텀 모달로 확인 (사이드바에서 올 때만)
-      if (food && food.name === '배추김치') {
-        setPendingKimchiDrop({ foodId, day: targetDay, time: targetTime });
-        setIsKimchiModalOpen(true);
-        return;
-      }
-
-      // 음식 DB에서 끌어온 경우도 놓은 자리에 삽입
-      addFoodToCell(foodId, targetDay, targetTime, dropIndex >= 0 ? dropIndex : undefined);
-      setSelectedChosung('전체');
-      setSearchQuery('');
+    let targetDay: DayOfWeek;
+    let targetTime: MealTime;
+    if (overItem) {
+      targetDay = overItem.day;
+      targetTime = overItem.time;
+    } else {
+      // `mobile-{요일}-{끼니}` 또는 `desktop-{요일}-{끼니}`
+      const overParts = overId.split('-');
+      targetDay = overParts[1] as DayOfWeek;
+      targetTime = overParts[2] as MealTime;
     }
+
+    // 항목 id에 담긴 순번이 곧 데이터 순번이라 그대로 쓰면 된다.
+    const dropIndex = overItem ? overItem.idx : -1;
+
+    // 그리드 내에서 이동하는 경우
+    if (isFromGrid) {
+      const sourceDay = active.data.current?.day as DayOfWeek;
+      const sourceTime = active.data.current?.time as MealTime;
+      const sourceIdx = active.data.current?.idx as number;
+
+      // 같은 칸 안에서 드롭한 경우 (정렬)
+      if (sourceDay === targetDay && sourceTime === targetTime) {
+        setMenus(prev => {
+          const entryIdx = prev.findIndex(m => m.day === sourceDay && m.time === sourceTime);
+          if (entryIdx === -1) return prev;
+          const foods = prev[entryIdx].foods ?? [];
+          if (sourceIdx < 0 || sourceIdx >= foods.length) return prev;
+          // 항목이 없는 빈 영역에 놓으면 맨 뒤로 보낸다
+          const to = dropIndex >= 0 ? Math.min(dropIndex, foods.length - 1) : foods.length - 1;
+          if (sourceIdx === to) return prev;
+          const newMenus = [...prev];
+          newMenus[entryIdx] = { ...newMenus[entryIdx], foods: arrayMove(foods, sourceIdx, to) };
+          return newMenus;
+        });
+        return;
+      }
+
+      // 다른 칸으로 이동 — 놓은 자리에 삽입
+      removeFood(sourceDay, sourceTime, sourceIdx);
+      addFoodToCell(draggedFood, targetDay, targetTime, dropIndex >= 0 ? dropIndex : undefined);
+      return;
+    }
+
+    // 배추김치 특별 처리 - 커스텀 모달로 확인 (사이드바에서 올 때만)
+    if (draggedFood.name === '배추김치') {
+      setPendingKimchiDrop({ food: draggedFood, day: targetDay, time: targetTime });
+      setIsKimchiModalOpen(true);
+      return;
+    }
+
+    // 음식 DB에서 끌어온 경우도 놓은 자리에 삽입
+    addFoodToCell(draggedFood, targetDay, targetTime, dropIndex >= 0 ? dropIndex : undefined);
+    setSelectedChosung('전체');
+    setSearchQuery('');
   };
 
 
@@ -1072,18 +1007,16 @@ export default function MealAdminView() {
     }
   };
 
-  const removeFood = (day: DayOfWeek, time: MealTime, foodId: string) => {
+  /** 칸 안 idx번째 음식을 뺀다. (이름이 같은 항목이 두 개여도 정확히 하나만 지운다) */
+  const removeFood = (day: DayOfWeek, time: MealTime, idx: number) => {
     setMenus((prev) => {
-      const existingEntryIndex = prev.findIndex(m => m.day === day && m.time === time);
-      if (existingEntryIndex >= 0) {
-        const newMenus = [...prev];
-        newMenus[existingEntryIndex] = {
-          ...newMenus[existingEntryIndex],
-          foodIds: newMenus[existingEntryIndex].foodIds.filter(id => id !== foodId)
-        };
-        return newMenus;
-      }
-      return prev;
+      const entryIdx = prev.findIndex(m => m.day === day && m.time === time);
+      if (entryIdx === -1) return prev;
+      const foods = prev[entryIdx].foods ?? [];
+      if (idx < 0 || idx >= foods.length) return prev;
+      const newMenus = [...prev];
+      newMenus[entryIdx] = { ...newMenus[entryIdx], foods: foods.filter((_, i) => i !== idx) };
+      return newMenus;
     });
   };
 
@@ -1249,11 +1182,17 @@ export default function MealAdminView() {
     }
   };
 
-  const activeFoodItem = activeId 
-    ? (activeId.startsWith('grid-') 
-        ? foodDb.find(f => f.id === activeId.split('-')[activeId.split('-').length - 2])
-        : foodDb.find(f => f.id === activeId))
+  const activeGridItem = activeId ? parseGridItemId(activeId) : null;
+  const activeFoodItem: MealFood | undefined = activeId
+    ? (activeGridItem
+        ? getMealFoods(menus, foodDb, activeGridItem.day, activeGridItem.time)[activeGridItem.idx]
+        : toMealFood(foodDb.find(f => f.id === activeId)))
     : undefined;
+
+  /** 식단표 칸의 음식을 그 주 메뉴에서만 고치도록 편집기를 연다. */
+  const openCellEditor = (day: DayOfWeek, time: MealTime, idx: number, food: MealFood) => {
+    setEditingCell({ day, time, idx, name: food.name, origin: food.origin || '' });
+  };
 
   const handleToggleFavorite = async (food: FoodItem) => {
     const currentFavs = settings.favoriteFoodIds || [];
@@ -1449,28 +1388,24 @@ export default function MealAdminView() {
                     <tr key={time}>
                       <td className="border border-gray-200 p-1 text-center font-bold bg-gray-50 text-[10px]">{time}</td>
                       {DAYS.map(day => {
-                        const menuEntry = menus.find(m => m.day === day && m.time === time);
-                        const foods = menuEntry ? menuEntry.foodIds.map(id => foodDb.find(f => f.id === id)!).filter(Boolean) : [];
+                        const foods = getMealFoods(menus, foodDb, day, time);
                         return (
                           <td key={`m-${day}-${time}`} className="border border-gray-200 p-1 align-top h-[80px] w-[12%]">
                             <DroppableCell id={`mobile-${day}-${time}`}>
                               <div className="min-h-[70px] flex flex-col gap-1 items-center">
                                 <SortableContext 
-                                  items={foods.map((f, i) => `grid-mobile-${day}-${time}-${f.id}-${i}`)} 
+                                  items={foods.map((_, i) => `grid-mobile-${day}-${time}-${i}`)} 
                                   strategy={verticalListSortingStrategy}
                                 >
-                                  {foods.map((food, idx) => food && (
+                                  {foods.map((food, idx) => (
                                     <DraggableGridFoodMobile
-                                      key={`${food.id}-${idx}`}
+                                      key={`${food.name}-${idx}`}
                                       food={food}
                                       day={day}
                                       time={time}
                                       idx={idx}
-                                      onRemove={() => removeFood(day, time, food.id)}
-                                      onEdit={() => {
-                                        setEditingFood(food);
-                                        setIsFoodModalOpen(true);
-                                      }}
+                                      onRemove={() => removeFood(day, time, idx)}
+                                      onEdit={() => openCellEditor(day, time, idx, food)}
                                     />
                                   ))}
                                 </SortableContext>
@@ -1592,21 +1527,18 @@ export default function MealAdminView() {
                           <DroppableCell id={`desktop-${day}-${time}`}>
                             <div className="grid min-h-[190px] h-full items-stretch overflow-hidden px-0.5 py-2" style={mealGridStyle}>
                               <SortableContext 
-                                items={foods.map((f, i) => `grid-${day}-${time}-${f.id}-${i}`)} 
+                                items={foods.map((_, i) => `grid-${day}-${time}-${i}`)} 
                                 strategy={verticalListSortingStrategy}
                               >
-                                {foods.map((food, idx) => food && (
+                                {foods.map((food, idx) => (
                                   <DraggableGridFood 
-                                    key={`${food.id}-${idx}`}
+                                    key={`${food.name}-${idx}`}
                                     food={food}
                                     day={day}
                                     time={time}
                                     idx={idx}
-                                    onRemove={() => removeFood(day, time, food.id)}
-                                    onEdit={() => {
-                                      setEditingFood(food);
-                                      setIsFoodModalOpen(true);
-                                    }}
+                                    onRemove={() => removeFood(day, time, idx)}
+                                    onEdit={() => openCellEditor(day, time, idx, food)}
                                   />
                                 ))}
                               </SortableContext>
@@ -1736,7 +1668,6 @@ export default function MealAdminView() {
                     const { error } = await supabase.from('food_items').delete().eq('id', f.id);
                     if (!error) {
                       setFoodDb(foodDb.filter(item => item.id !== f.id));
-                      setMenus(menus.map(m => ({...m, foodIds: m.foodIds.filter(id => id !== f.id)})));
                     } else {
                       alert('삭제 실패: ' + (error?.message || '알 수 없는 오류'));
                     }
@@ -1877,7 +1808,6 @@ export default function MealAdminView() {
                       const { error } = await supabase.from('food_items').delete().eq('id', f.id);
                       if (!error) {
                         setFoodDb(foodDb.filter(item => item.id !== f.id));
-                        setMenus(menus.map(m => ({...m, foodIds: m.foodIds.filter(id => id !== f.id)})));
                       } else {
                         alert('삭제 실패: ' + (error?.message || '알 수 없는 오류'));
                       }
@@ -2132,6 +2062,85 @@ export default function MealAdminView() {
         </div>
       )}
 
+      {/* 식단표 칸 음식 편집 — 음식 DB는 건드리지 않고 이 주 메뉴만 바꾼다 */}
+      {editingCell && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-3 backdrop-blur-xl">
+          <div className="w-[420px] max-w-[94vw] rounded-[28px] border border-white/80 bg-white/80 p-6 shadow-[0_30px_90px_-34px_rgba(15,23,42,0.55)] backdrop-blur-2xl">
+            <h2 className="mb-1 text-xl font-bold tracking-[-0.025em] text-slate-950">메뉴 수정</h2>
+            <p className="mb-5 text-sm font-medium text-slate-500">
+              {editingCell.day}요일 {editingCell.time} · 이 주 식단표에만 반영됩니다.
+            </p>
+
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">메뉴 이름</label>
+                <textarea
+                  className="min-h-[76px] w-full resize-y rounded-xl border border-white/90 bg-white/70 px-3 py-2.5 leading-relaxed shadow-inner outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-500/10"
+                  value={editingCell.name}
+                  onChange={(e) => setEditingCell({ ...editingCell, name: e.target.value })}
+                  rows={2}
+                  autoFocus
+                />
+                <p className="mt-1 text-xs text-gray-400">원하는 위치에서 Enter를 누르면 식단표에도 줄바꿈이 반영됩니다.</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">원산지 정보 (선택)</label>
+                <input
+                  type="text"
+                  className="w-full rounded-xl border border-white/90 bg-white/70 px-3 py-2.5 shadow-inner outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-500/10"
+                  value={editingCell.origin}
+                  onChange={(e) => setEditingCell({ ...editingCell, origin: e.target.value })}
+                  placeholder="예: 돈육: 국내산"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center">
+              <button
+                onClick={() => {
+                  removeFood(editingCell.day, editingCell.time, editingCell.idx);
+                  setEditingCell(null);
+                }}
+                className="rounded-xl px-3 py-2 text-sm font-semibold text-rose-500 transition hover:bg-rose-50"
+              >
+                이 칸에서 빼기
+              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setEditingCell(null)}
+                  className="rounded-xl border border-white/90 bg-white/65 px-4 py-2 font-semibold text-slate-600 shadow-sm transition hover:bg-white"
+                >
+                  취소
+                </button>
+                <button
+                  onClick={() => {
+                    const name = editingCell.name.trim();
+                    if (!name) return alert('이름을 입력하세요.');
+                    const origin = editingCell.origin.trim();
+                    setMenus((prev) => {
+                      const entryIdx = prev.findIndex(m => m.day === editingCell.day && m.time === editingCell.time);
+                      if (entryIdx === -1) return prev;
+                      const foods = prev[entryIdx].foods ?? [];
+                      if (editingCell.idx < 0 || editingCell.idx >= foods.length) return prev;
+                      const newMenus = [...prev];
+                      newMenus[entryIdx] = {
+                        ...newMenus[entryIdx],
+                        foods: foods.map((f, i) => (i === editingCell.idx ? { name, origin: origin || undefined } : f)),
+                      };
+                      return newMenus;
+                    });
+                    setEditingCell(null);
+                  }}
+                  className="rounded-xl bg-[#0071e3] px-5 py-2 font-semibold text-white shadow-[0_7px_18px_-8px_rgba(0,113,227,0.9)] transition-all hover:bg-[#0077ed]"
+                >
+                  저장
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Food Edit/Add Modal */}
       {isFoodModalOpen && editingFood && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-3 backdrop-blur-xl">
@@ -2182,7 +2191,6 @@ export default function MealAdminView() {
                       const { error } = await supabase.from('food_items').delete().eq('id', editingFood.id);
                       if (!error) {
                         setFoodDb(foodDb.filter(f => f.id !== editingFood.id));
-                        setMenus(menus.map(m => ({...m, foodIds: m.foodIds.filter(id => id !== editingFood.id)})));
                         setIsFoodModalOpen(false);
                       } else {
                         alert('삭제 실패: ' + (error?.message || '알 수 없는 오류'));
@@ -2499,20 +2507,21 @@ export default function MealAdminView() {
                         setFoodDb(finalFoodDb);
 
                         // 2. 추출된 메뉴 데이터로 식단표 구성
-                        const newMenus: MealEntry[] = extractedMenuData.map(item => {
-                          const foodIds = item.foods.map(name => {
-                            const cleanName = name.includes('(') ? name.split('(')[0].trim() : name.trim();
-                            // 리뷰에서 수정된 이름이 있을 수 있으므로 매칭 주의 (단순화를 위해 원본 이름 기준)
-                            return finalFoodDb.find(f => f.name === cleanName || cleanName.includes(f.name))?.id;
-                          }).filter(Boolean) as string[];
+                        //    이름을 그대로 담으므로 DB에서 id를 찾아 맞출 필요가 없다.
+                        const originByName = new Map<string, string>();
+                        finalFoodDb.forEach(f => { if (f.origin) originByName.set(f.name.trim(), f.origin); });
+                        reviewFoods.forEach(f => { if (f.origin) originByName.set(f.name.trim(), f.origin); });
 
-                          return {
-                            id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-                            day: item.day,
-                            time: item.time,
-                            foodIds
-                          };
-                        });
+                        const newMenus: MealEntry[] = extractedMenuData.map(item => ({
+                          id: Date.now().toString() + Math.random().toString(36).slice(2, 7),
+                          day: item.day,
+                          time: item.time,
+                          foodIds: [],
+                          foods: item.foods
+                            .map(name => (name.includes('(') ? name.split('(')[0].trim() : name.trim()))
+                            .filter(Boolean)
+                            .map(name => ({ name, origin: originByName.get(name) })),
+                        }));
 
                         setMenus(newMenus);
                         alert(`DB에 ${foodsToInsert.length}개의 음식을 추가하고 식단표 구성을 완료했습니다!`);
@@ -2664,7 +2673,7 @@ export default function MealAdminView() {
                 <button
                   onClick={() => {
                     if (pendingKimchiDrop) {
-                      addFoodToCell(pendingKimchiDrop.foodId, pendingKimchiDrop.day, pendingKimchiDrop.time);
+                      addFoodToCell(pendingKimchiDrop.food, pendingKimchiDrop.day, pendingKimchiDrop.time);
                     }
                     setIsKimchiModalOpen(false);
                     setPendingKimchiDrop(null);
@@ -2676,7 +2685,7 @@ export default function MealAdminView() {
                 <button
                   onClick={() => {
                     if (pendingKimchiDrop) {
-                      applyKimchiToAll(pendingKimchiDrop.foodId);
+                      applyKimchiToAll(pendingKimchiDrop.food);
                     }
                     setIsKimchiModalOpen(false);
                     setPendingKimchiDrop(null);
@@ -2841,14 +2850,14 @@ function SortableHistoryItem({ h, onUpdate, onDelete }: { h: HistoryEntry, onUpd
 function DraggableGridFood({ 
   food, day, time, idx, onRemove, onEdit 
 }: { 
-  food: FoodItem, day: string, time: string, idx: number,
+  food: MealFood, day: string, time: string, idx: number,
   onRemove: () => void,
   onEdit: () => void
 }) {
-  const itemId = `grid-${day}-${time}-${food.id}-${idx}`;
+  const itemId = `grid-${day}-${time}-${idx}`;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: itemId,
-    data: { source: 'grid', day, time, foodId: food.id, idx }
+    data: { source: 'grid', day, time, food, idx }
   });
   
   const style = {
@@ -2891,14 +2900,14 @@ function DraggableGridFood({
 function DraggableGridFoodMobile({ 
   food, day, time, idx, onRemove, onEdit 
 }: { 
-  food: FoodItem, day: string, time: string, idx: number,
+  food: MealFood, day: string, time: string, idx: number,
   onRemove: () => void,
   onEdit: () => void
 }) {
-  const itemId = `grid-mobile-${day}-${time}-${food.id}-${idx}`;
+  const itemId = `grid-mobile-${day}-${time}-${idx}`;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: itemId,
-    data: { source: 'grid', day, time, foodId: food.id, idx }
+    data: { source: 'grid', day, time, food, idx }
   });
   
   const style = {
