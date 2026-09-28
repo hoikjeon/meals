@@ -4,13 +4,14 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { dummyFoodItems, dummyWeeklyMenus, dummySettings, dummyTodayLunch } from '@/lib/dummyData';
-import { DayOfWeek, FoodItem, HistoryEntry, MealEntry, MealTime, Settings as MealSettings, TodayLunch } from '@/lib/types';
+import { DayOfWeek, FoodItem, HistoryEntry, MealEntry, MealFood, MealTime, Settings as MealSettings, TodayLunch } from '@/lib/types';
 import { formatDate, getWeekDatesFromTitle, getWeekDatesFromWeekStart, getWeekStartFromTitle, DAYS } from '@/lib/dateUtils';
 import { BellRing, ChevronLeft, ChevronRight, Camera, Download, Settings, CalendarDays, List, ChevronDown } from 'lucide-react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { fetchLunchPhotos, LunchPhotoMap } from '@/lib/lunchPhotos';
 import { fetchAllFoodItems } from '@/lib/foodItems';
+import { getMealFoods } from '@/lib/mealFoods';
 
 
 const TIMES: MealTime[] = ['아침', '점심', '저녁'];
@@ -51,20 +52,13 @@ const getFoodsForMeal = (
   foodDb: FoodItem[],
   day: DayOfWeek,
   time: MealTime
-) => {
-  const menuEntry = menus.find(m => m.day === day && m.time === time);
-  return menuEntry
-    ? menuEntry.foodIds
-        .map(id => foodDb.find(f => f.id === id))
-        .filter((food): food is FoodItem => Boolean(food))
-    : [];
-};
+) => getMealFoods(menus, foodDb, day, time);
 
 const getMenuNameLineCount = (name: string) => (
   name.split(/\r?\n/).reduce((total, line) => total + splitMenuLine(line).length, 0)
 );
 
-const getMenuSlotWeight = (food?: FoodItem) => {
+const getMenuSlotWeight = (food?: MealFood) => {
   if (!food) return 1;
   return Math.max(2, getMenuNameLineCount(food.name) + 1);
 };
@@ -434,8 +428,7 @@ export default function MealUserView() {
             <div className="flex flex-col gap-3">
               {TIMES.map(time => {
                 const day = DAYS[activeSelectedDayIndex];
-                const menuEntry = menus.find(m => m.day === day && m.time === time);
-                const foods = menuEntry ? menuEntry.foodIds.map(id => foodDb.find(f => f.id === id)!).filter(Boolean) : [];
+                const foods = getMealFoods(menus, foodDb, day, time);
                 return (
                   <div key={time} className={`bg-white rounded-xl overflow-hidden ${
                     time === '점심'
@@ -453,8 +446,8 @@ export default function MealUserView() {
                     <div className="px-4 py-3">
                       {foods.length > 0 ? (
                         <div className="flex flex-col gap-1.5">
-                          {foods.map(food => (
-                            <div key={food.id} className="flex items-baseline gap-1">
+                          {foods.map((food, foodIdx) => (
+                            <div key={`${food.name}-${foodIdx}`} className="flex items-baseline gap-1">
                               <span className="text-sm font-semibold text-gray-800">{renderMenuName(food.name)}</span>
                               {food.origin && <span className="text-[10px] text-gray-400">({food.origin})</span>}
                             </div>
@@ -508,8 +501,8 @@ export default function MealUserView() {
                           return (
                             <td key={`${day}-${time}`} className="border border-slate-300 p-1.5 text-center align-top h-[145px]">
                               <div className="grid min-h-[145px] items-stretch" style={mealGridStyle}>
-                                {foods.length > 0 ? foods.map(food => (
-                                  <div key={food.id} className="grid h-full min-h-0 grid-rows-[auto_11px] content-start justify-items-center px-0.5 pt-0.5">
+                                {foods.length > 0 ? foods.map((food, foodIdx) => (
+                                  <div key={`${food.name}-${foodIdx}`} className="grid h-full min-h-0 grid-rows-[auto_11px] content-start justify-items-center px-0.5 pt-0.5">
                                     <span className="inline-block max-w-none text-center text-xs font-bold leading-snug text-slate-900" style={{ wordBreak: 'keep-all', overflowWrap: 'normal' }}>{renderMenuName(food.name)}</span>
                                     <span className={`h-[11px] whitespace-nowrap text-[9px] leading-none text-slate-500 ${food.origin ? '' : 'invisible'}`}>
                                       {food.origin ? `(${food.origin})` : '-'}
@@ -568,8 +561,8 @@ export default function MealUserView() {
                             <div className="min-h-[190px] h-full px-1.5 py-3">
                               {foods.length > 0 ? (
                                 <div className="grid h-full w-full items-stretch" style={mealGridStyle}>
-                                  {foods.map(food => (
-                                    <div key={food.id} className="grid h-full min-h-0 w-full grid-rows-[auto_12px] content-start justify-items-center px-0 pt-0.5 text-center">
+                                  {foods.map((food, foodIdx) => (
+                                    <div key={`${food.name}-${foodIdx}`} className="grid h-full min-h-0 w-full grid-rows-[auto_12px] content-start justify-items-center px-0 pt-0.5 text-center">
                                       <span className="inline-block max-w-none text-center text-[13px] font-extrabold leading-snug text-slate-900" style={{ wordBreak: 'keep-all', overflowWrap: 'normal' }}>{renderMenuName(food.name)}</span>
                                       <span className={`h-[12px] whitespace-nowrap text-[10px] leading-none text-slate-500 ${food.origin ? '' : 'invisible'}`}>
                                         {food.origin ? `(${food.origin})` : '-'}
@@ -700,8 +693,8 @@ export default function MealUserView() {
                       return (
                         <td key={`${day}-${time}`} className="border border-slate-400 p-0 align-top relative h-[190px]">
                           <div className="grid min-h-[190px] h-full items-stretch px-0.5 py-2" style={mealGridStyle}>
-                            {foods.map(food => (
-                              <div key={food.id} className="relative grid h-full min-h-0 w-full grid-rows-[auto_11px] content-start justify-items-center px-0 pt-0.5 text-center text-[12px]">
+                            {foods.map((food, foodIdx) => (
+                              <div key={`${food.name}-${foodIdx}`} className="relative grid h-full min-h-0 w-full grid-rows-[auto_11px] content-start justify-items-center px-0 pt-0.5 text-center text-[12px]">
                                 <div className="inline-block max-w-none text-center font-extrabold leading-snug text-slate-900" style={{ wordBreak: 'keep-all', overflowWrap: 'normal' }}>{renderMenuName(food.name)}</div>
                                 <div className={`h-[11px] whitespace-nowrap text-[9px] leading-none text-slate-500 ${food.origin ? '' : 'invisible'}`}>
                                   {food.origin ? `(${food.origin})` : '-'}

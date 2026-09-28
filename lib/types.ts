@@ -9,11 +9,20 @@ export interface FoodItem {
   origin?: string; // 원산지 정보 (예: 국내산, 호주산 등)
 }
 
+/** 그 주 메뉴에 실제로 적힌 음식 한 줄. 원산지는 주마다 달라질 수 있어 여기에 둔다. */
+export interface MealFood {
+  name: string;
+  origin?: string;
+}
+
 export interface MealEntry {
   id: string;
   day: DayOfWeek;
   time: MealTime;
+  /** 음식 DB 참조 방식(구형). foods가 있으면 그쪽이 우선이다. */
   foodIds: string[];
+  /** 메뉴 이름을 직접 담는 방식. 음식 DB에 행을 만들지 않아도 된다. */
+  foods?: MealFood[];
 }
 
 export interface Settings {
