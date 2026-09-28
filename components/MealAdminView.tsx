@@ -177,9 +177,28 @@ const getErrorMessage = (error: unknown) => (
   error instanceof Error ? error.message : '알 수 없는 오류'
 );
 
+/**
+ * 그 주의 월요일(YYYY-MM-DD)을 구한다.
+ *
+ * 저장된 weekStart가 있으면 그것을 최우선으로 쓴다.
+ * 주차 제목("1월 2주차 식단표")에는 연도가 없어서 제목에서 역산하면 항상 올해로 계산되고,
+ * 해를 넘기는 식단표(HWP 가져오기 등)의 연도가 1년 어긋나기 때문이다.
+ * 제목 역산은 weekStart가 없는 과거 기록을 위한 폴백으로만 쓴다.
+ */
 const resolveWeekStart = (weekTitle: string, settings?: Partial<Settings>) => (
-  getWeekStartFromTitle(weekTitle) || settings?.weekStart || formatDate(getWeekDatesFromTitle(weekTitle)[0])
+  settings?.weekStart || getWeekStartFromTitle(weekTitle) || formatDate(getWeekDatesFromTitle(weekTitle)[0])
 );
+
+/**
+ * 주차 제목을 직접 고쳤을 때의 새 weekStart.
+ * 제목에 연도가 없으므로, 오늘 연도가 아니라 지금 보고 있는 주의 연도를 기준으로 계산한다.
+ */
+const retitleWeekStart = (nextTitle: string, settings: Settings) => {
+  const baseYear = settings.weekStart
+    ? parseLocalDate(settings.weekStart).getFullYear()
+    : new Date().getFullYear();
+  return getWeekStartFromTitle(nextTitle, baseYear) || settings.weekStart;
+};
 
 const normalizeSettingsWeekStart = (settings: Settings, weekTitle = settings.weekTitle): Settings => ({
   ...settings,
@@ -672,9 +691,10 @@ export default function MealAdminView() {
       return;
     }
 
-    // 2. 같은 주차 제목 또는 같은 날짜 범위가 있으면 덮어쓰기, 없으면 새로 추가
-    const existing = history.find(h => h.weekTitle === settingsForSave.weekTitle)
-      || history.find(h => getHistoryWeekStart(h) === weekStartForSave);
+    // 2. 같은 주(월요일 날짜)가 있으면 덮어쓰고, 없으면 새로 추가한다.
+    //    제목으로 먼저 찾으면 연도가 없는 탓에 내년 '1월 2주차'가 올해 기록을 덮어쓴다.
+    //    제목은 라벨일 뿐이므로 주 시작일만으로 판단한다.
+    const existing = history.find(h => getHistoryWeekStart(h) === weekStartForSave);
     let historyError;
     if (existing) {
       ({ error: historyError } = await supabase
@@ -1396,7 +1416,7 @@ export default function MealAdminView() {
                   onChange={(e) => setSettings({
                     ...settings,
                     weekTitle: e.target.value,
-                    weekStart: getWeekStartFromTitle(e.target.value) || settings.weekStart
+                    weekStart: retitleWeekStart(e.target.value, settings)
                   })}
                   className="w-48 border-b border-slate-300 bg-transparent text-center text-sm font-bold text-slate-700 focus:border-[#0071e3] focus:outline-none"
                   placeholder="예: 3월 1주차 식단표"
@@ -1522,7 +1542,7 @@ export default function MealAdminView() {
                   onChange={(e) => setSettings({
                     ...settings,
                     weekTitle: e.target.value,
-                    weekStart: getWeekStartFromTitle(e.target.value) || settings.weekStart
+                    weekStart: retitleWeekStart(e.target.value, settings)
                   })}
                   className="text-center bg-transparent border-b-2 border-slate-400 focus:outline-none font-extrabold text-slate-800 text-xl w-72"
                   placeholder="예: 3월 1주차 식단표"
